@@ -9,7 +9,7 @@
   "scripts": {
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
-    "build": "npm run build -w web && npm run build -w server && node scripts/copy-web-dist.js",
+    "build": "npm run build -w web && npm run build -w server && node scripts/copy-web-dist.mjs",
     "start": "npm run start -w server",
     "start:worker": "npm run start:worker -w server",
     "worker": "npm run worker -w server"
