@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm run prisma:deploy -w server && npm run start -w server",
+    "startCommand": "node -e \"const u=process.env.DATABASE_URL||''; console.log('[diag] DATABASE_URL set:', !!u, 'len:', u.length, 'prefix:', JSON.stringify(u.slice(0,20)))\" && npm run prisma:deploy -w server && npm run start -w server",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
