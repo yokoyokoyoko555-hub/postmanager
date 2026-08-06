@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  x
+  instagram
+}
+
+enum DraftStatus {
+  draft
+  scheduled
+  posted
+  failed
+}
+
+enum DraftSource {
+  manual
+  ai
+}
+
+model Account {
+  id                 String   @id @default(cuid())
+  platform           Platform
+  displayName        String
+  handle             String
+  oauthAccessToken   String?
+  oauthRefreshToken  String?
+  tokenExpiresAt     DateTime?
+  platformUserId     String?
+  igBusinessAccountId String?
+  createdAt          DateTime @default(now())
+
+  drafts         Draft[]
+  postMetrics    PostMetric[]
+  accountMetrics AccountMetric[]
+
+  @@unique([platform, handle])
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+
+  drafts Draft[]
+}
+
+model Draft {
+  id             String      @id @default(cuid())
+  accountId      String
+  account        Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platform       Platform
+  text           String
+  mediaUrls      String[]    @default([])
+  status         DraftStatus @default(draft)
+  scheduledAt    DateTime?
+  postedAt       DateTime?
+  source         DraftSource @default(manual)
+  templateId     String?
+  template       Template?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  quoteTargetId  String?
+  lastError      String?
+  retryCount     Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  postLogs PostLog[]
+
+  @@index([status, scheduledAt])
+}
+
+model PostLog {
+  id             String   @id @default(cuid())
+  draftId        String
+  draft          Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  platformPostId String?
+  status         String
+  errorMessage   String?
+  executedAt     DateTime @default(now())
+}
+
+model PostMetric {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platform       Platform
+  platformPostId String
+  likes          Int      @default(0)
+  reposts        Int      @default(0)
+  replies        Int      @default(0)
+  impressions    Int      @default(0)
+  saves          Int      @default(0)
+  capturedAt     DateTime @default(now())
+}
+
+model AccountMetric {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  platform       Platform
+  followersCount Int      @default(0)
+  profileViews   Int      @default(0)
+  reach          Int      @default(0)
+  capturedAt     DateTime @default(now())
+}
+
+model DailyReport {
+  id                String   @id @default(cuid())
+  reportDate        DateTime @db.Date
+  reviewText        String
+  improvementsText  String
+  nextActionsText   String
+  createdAt         DateTime @default(now())
+
+  @@unique([reportDate])
+}
