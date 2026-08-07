@@ -207,14 +207,15 @@ const POST_MODE_OPTIONS = [
 ] as const;
 
 function DraftEditorModal({
-  open, onClose, onSave, draft, accounts, templates, drafts, initialText, initialMediaUrls, onSaveAsTemplate,
+  open, onClose, onSave, draft, accounts, templates, drafts, initialText, initialMediaUrls, defaultAccountId, onSaveAsTemplate,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: { accountId: string; text: string; mediaUrls: string[]; postMode: PostMode; quoteTargetId: string | null }) => void;
   draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[]; initialText?: string; initialMediaUrls?: string[];
+  defaultAccountId?: string;
   onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
 }) {
-  const [accountId, setAccountId] = useState(draft?.accountId || accounts[0]?.id || "");
+  const [accountId, setAccountId] = useState(draft?.accountId || defaultAccountId || accounts[0]?.id || "");
   const [text, setText] = useState(draft?.text || initialText || "");
   const [mediaUrls, setMediaUrls] = useState<string[]>(draft?.mediaUrls || initialMediaUrls || []);
   const [templateId, setTemplateId] = useState("");
@@ -223,13 +224,13 @@ function DraftEditorModal({
   const [quoteTargetId, setQuoteTargetId] = useState(draft?.quoteTargetId || "");
 
   useEffect(() => {
-    setAccountId(draft?.accountId || accounts[0]?.id || "");
+    setAccountId(draft?.accountId || defaultAccountId || accounts[0]?.id || "");
     setText(draft?.text || initialText || "");
     setMediaUrls(draft?.mediaUrls || initialMediaUrls || []);
     setTemplateId("");
     setPostMode(draft?.postMode || "post");
     setQuoteTargetId(draft?.quoteTargetId || "");
-  }, [draft, open, accounts, initialText, initialMediaUrls]);
+  }, [draft, open, accounts, initialText, initialMediaUrls, defaultAccountId]);
 
   if (!open) return null;
 
@@ -1042,7 +1043,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 sm:px-6 py-2" style={{ borderBottom: `1px solid ${HAIRLINE}`, background: PANEL }}>
+        <div className="md:hidden flex items-center gap-2 px-4 sm:px-6 py-2" style={{ borderBottom: `1px solid ${HAIRLINE}`, background: PANEL }}>
           <Users size={13} style={{ color: MUTED }} className="shrink-0" />
           <select
             value={activeAccountId}
@@ -1274,6 +1275,7 @@ export default function App() {
         drafts={drafts}
         initialText={draftInitialText}
         initialMediaUrls={draftInitialMediaUrls}
+        defaultAccountId={activeAccountId === "all" ? undefined : activeAccountId}
         onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); setDraftInitialMediaUrls(undefined); }}
         onSave={saveDraft}
         onSaveAsTemplate={saveTextAsTemplate}
