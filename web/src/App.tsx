@@ -1098,11 +1098,15 @@ export default function App() {
                       <div className="flex items-center gap-1.5 text-xs" style={{ color: a.connected ? GREEN : RED }}>
                         <Link2 size={12} /> {a.connected ? "連携済み" : "未連携"}
                       </div>
-                      {!a.connected && (
-                        <a href={`/api/accounts/${a.platform}/oauth/start`} className="text-xs px-3 py-1.5 rounded text-center" style={{ background: GOLD, color: INK }}>
-                          {a.platform === "x" ? "Xと連携する" : "Instagramと連携する"}
-                        </a>
-                      )}
+                      <a
+                        href={`/api/accounts/${a.platform}/oauth/start`}
+                        className="text-xs px-3 py-1.5 rounded text-center"
+                        style={a.connected ? { color: MUTED, border: `1px solid ${HAIRLINE}` } : { background: GOLD, color: INK }}
+                      >
+                        {a.connected
+                          ? "再連携する(権限更新など)"
+                          : a.platform === "x" ? "Xと連携する" : "Instagramと連携する"}
+                      </a>
                       <div className="flex items-center justify-between pt-2 mt-auto" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
                         <div className="flex items-center gap-1">
                           <button onClick={() => moveAccount(a.id, "up")} disabled={accounts[0]?.id === a.id} className="p-1.5 rounded disabled:opacity-30" style={{ color: MUTED }}><ChevronUp size={14} /></button>
