@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, DailyReport, Draft, Template } from "./types";
@@ -234,9 +234,15 @@ function DraftEditorModal({
                   </button>
                 </div>
               ))}
-              <label className="w-16 h-16 flex items-center justify-center rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                <span className="text-[9px]">ライブラリ</span>
                 <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} disabled={uploading} />
+              </label>
+              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                <span className="text-[9px]">カメラ</span>
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} disabled={uploading} />
               </label>
             </div>
           </div>
