@@ -347,6 +347,7 @@ function AIGenerateModal({
   const [accountId, setAccountId] = useState(defaultAccountId);
   const [input, setInput] = useState("");
   const [tone, setTone] = useState<(typeof TONE_OPTIONS)[number]["id"]>("hype");
+  const [provider, setProvider] = useState<"claude" | "openai">("claude");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [variants, setVariants] = useState<{ label: string; text: string }[]>([]);
@@ -363,7 +364,7 @@ function AIGenerateModal({
     setError("");
     setVariants([]);
     try {
-      const { variants } = await api.ai.generateDraft({ accountId, input, tone });
+      const { variants } = await api.ai.generateDraft({ accountId, input, tone, provider });
       setVariants(variants);
     } catch {
       setError("生成に失敗しました。もう一度お試しください。");
@@ -390,18 +391,34 @@ function AIGenerateModal({
               </select>
             </div>
             <div>
-              <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>トーン</label>
+              <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>AIモデル</label>
               <div className="grid grid-cols-2 gap-1 mt-1">
-                {TONE_OPTIONS.map((t) => {
-                  const Icon = t.icon;
-                  const active = tone === t.id;
+                {([
+                  { id: "claude", label: "Claude" },
+                  { id: "openai", label: "ChatGPT" },
+                ] as const).map((p) => {
+                  const active = provider === p.id;
                   return (
-                    <button key={t.id} onClick={() => setTone(t.id)} className="flex items-center gap-1.5 px-2 py-2 rounded text-xs" style={{ background: active ? "rgba(203,162,78,0.15)" : CARD, color: active ? GOLD : MUTED, border: `1px solid ${active ? GOLD_SOFT : HAIRLINE}` }}>
-                      <Icon size={12} /> {t.label}
+                    <button key={p.id} onClick={() => setProvider(p.id)} className="flex items-center justify-center gap-1.5 px-2 py-2 rounded text-xs" style={{ background: active ? "rgba(111,214,201,0.15)" : CARD, color: active ? HOLO_A : MUTED, border: `1px solid ${active ? HOLO_A : HAIRLINE}` }}>
+                      {p.label}
                     </button>
                   );
                 })}
               </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>トーン</label>
+            <div className="grid grid-cols-4 gap-1 mt-1">
+              {TONE_OPTIONS.map((t) => {
+                const Icon = t.icon;
+                const active = tone === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTone(t.id)} className="flex items-center gap-1.5 px-2 py-2 rounded text-xs" style={{ background: active ? "rgba(203,162,78,0.15)" : CARD, color: active ? GOLD : MUTED, border: `1px solid ${active ? GOLD_SOFT : HAIRLINE}` }}>
+                    <Icon size={12} /> {t.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div>
@@ -601,8 +618,6 @@ export default function App() {
     </>
   );
 
-  const activeAccountLabel = activeAccountId === "all" ? "すべてのアカウント" : accountOf(activeAccountId)?.displayName || "";
-
   if (!ready) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center" style={{ background: INK }}>
@@ -626,42 +641,9 @@ export default function App() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex flex-col gap-3 px-4 sm:px-6 py-4 sm:py-5" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 -ml-1.5 shrink-0" style={{ color: PAPER }}><Menu size={20} /></button>
-              <span className="md:hidden text-sm truncate" style={{ color: PAPER, fontFamily: displayFont }}>{activeAccountLabel}</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {tab !== "dashboard" && tab !== "reports" && tab !== "accounts" && accounts.length > 0 && (
-                <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
-                  <Sparkles size={14} /> <span className="hidden xs:inline">AI生成</span>
-                </button>
-              )}
-              {tab === "templates" && (
-                <button onClick={() => { setEditingTemplate(null); setTemplateEditorOpen(true); }} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
-                  <Plus size={14} /> <span className="hidden xs:inline">新規テンプレート</span>
-                </button>
-              )}
-              {tab === "accounts" && (
-                <button onClick={() => setAccountEditorOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
-                  <Plus size={14} /> <span className="hidden xs:inline">アカウント追加</span>
-                </button>
-              )}
-              {(tab === "drafts" || tab === "scheduled") && accounts.length > 0 && (
-                <button onClick={() => { setEditingDraft(null); setEditorOpen(true); }} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
-                  <Plus size={14} /> <span className="hidden xs:inline">新規下書き</span>
-                </button>
-              )}
-              {tab === "dashboard" && (
-                <button onClick={generateDailyReport} disabled={reportLoading} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap disabled:opacity-50" style={{ background: GOLD, color: INK }}>
-                  {reportLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  <span className="hidden xs:inline">{reportLoading ? "生成中…" : "本日のレポートを更新"}</span>
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1" style={{ scrollbarWidth: "none" }}>
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 sm:py-5" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+          <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1 min-w-0" style={{ scrollbarWidth: "none" }}>
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 -ml-1.5 mr-1 shrink-0" style={{ color: PAPER }}><Menu size={20} /></button>
             {tabs.map((t) => {
               const Icon = t.icon;
               const active = tab === t.id;
@@ -671,6 +653,34 @@ export default function App() {
                 </button>
               );
             })}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {tab !== "dashboard" && tab !== "reports" && tab !== "accounts" && accounts.length > 0 && (
+              <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
+                <Sparkles size={14} /> <span className="hidden xs:inline">AI生成</span>
+              </button>
+            )}
+            {tab === "templates" && (
+              <button onClick={() => { setEditingTemplate(null); setTemplateEditorOpen(true); }} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
+                <Plus size={14} /> <span className="hidden xs:inline">新規テンプレート</span>
+              </button>
+            )}
+            {tab === "accounts" && (
+              <button onClick={() => setAccountEditorOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
+                <Plus size={14} /> <span className="hidden xs:inline">アカウント追加</span>
+              </button>
+            )}
+            {(tab === "drafts" || tab === "scheduled") && accounts.length > 0 && (
+              <button onClick={() => { setEditingDraft(null); setEditorOpen(true); }} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
+                <Plus size={14} /> <span className="hidden xs:inline">新規下書き</span>
+              </button>
+            )}
+            {tab === "dashboard" && (
+              <button onClick={generateDailyReport} disabled={reportLoading} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap disabled:opacity-50" style={{ background: GOLD, color: INK }}>
+                {reportLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                <span className="hidden xs:inline">{reportLoading ? "生成中…" : "本日のレポートを更新"}</span>
+              </button>
+            )}
           </div>
         </div>
 

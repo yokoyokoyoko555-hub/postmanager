@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { generateJson } from "../lib/anthropic.js";
+import { generateJson } from "../lib/aiProvider.js";
 import { generateAndSaveDailyReport } from "../lib/dailyReport.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -17,12 +17,13 @@ const generateSchema = z.object({
   accountId: z.string().min(1),
   input: z.string().min(1),
   tone: z.enum(["hype", "info", "sale", "unbox"]),
+  provider: z.enum(["claude", "openai"]).default("claude"),
 });
 
 router.post("/generate-draft", async (req, res) => {
   const parsed = generateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { accountId, input, tone } = parsed.data;
+  const { accountId, input, tone, provider } = parsed.data;
 
   const account = await prisma.account.findUnique({ where: { id: accountId } });
   if (!account) return res.status(404).json({ error: "account not found" });
@@ -48,11 +49,11 @@ ${TONE_LABELS[tone]}
 ・3パターンはそれぞれ違う切り口にする
 
 出力は次のJSON形式のみを返してください。前置きや説明、コードブロック記法は一切不要です:
-[{"label":"パターンの特徴を5文字程度で","text":"投稿文そのもの"}]`;
+{"variants":[{"label":"パターンの特徴を5文字程度で","text":"投稿文そのもの"}]}`;
 
   try {
-    const variants = await generateJson<Array<{ label: string; text: string }>>(prompt);
-    res.json({ variants });
+    const parsed_ = await generateJson<{ variants: Array<{ label: string; text: string }> }>(prompt, provider);
+    res.json({ variants: parsed_.variants });
   } catch (e) {
     res.status(502).json({ error: "AI生成に失敗しました", detail: (e as Error).message });
   }

@@ -43,7 +43,7 @@ export const api = {
     togglePosted: (id: string) => request<Draft>(`/drafts/${id}/toggle-posted`, { method: "POST" }),
   },
   ai: {
-    generateDraft: (data: { accountId: string; input: string; tone: string }) =>
+    generateDraft: (data: { accountId: string; input: string; tone: string; provider: "claude" | "openai" }) =>
       request<{ variants: { label: string; text: string }[] }>("/ai/generate-draft", {
         method: "POST",
         body: JSON.stringify(data),

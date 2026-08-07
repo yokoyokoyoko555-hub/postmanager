@@ -1,7 +1,8 @@
-import { generateJson } from "./anthropic.js";
+import type { AiProvider } from "./aiProvider.js";
+import { generateJson } from "./aiProvider.js";
 import { prisma } from "./prisma.js";
 
-export async function generateAndSaveDailyReport() {
+export async function generateAndSaveDailyReport(provider: AiProvider = "claude") {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const start = new Date(yesterday);
@@ -27,7 +28,7 @@ ${contextLines}
 出力は次のJSON形式のみを返してください。前置き・コードブロック記法は不要です:
 {"review":"前日の振り返り(3〜4文)","improvements":"改善点(3〜4文)","next_actions":"ネクストアクション(3〜4文、箇条書き調でも可)"}`;
 
-  const parsed = await generateJson<{ review: string; improvements: string; next_actions: string }>(prompt, 800);
+  const parsed = await generateJson<{ review: string; improvements: string; next_actions: string }>(prompt, provider, 800);
 
   const reportDate = new Date();
   reportDate.setHours(0, 0, 0, 0);
