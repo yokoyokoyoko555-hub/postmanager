@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { generateJson } from "../lib/aiProvider.js";
-import { generateAndSaveDailyReport } from "../lib/dailyReport.js";
+import { generateAndSaveDailyReport, generateDailyReportsForAllAccounts } from "../lib/dailyReport.js";
 import { prisma } from "../lib/prisma.js";
 
 const router = Router();
@@ -59,17 +59,39 @@ ${TONE_LABELS[tone]}
   }
 });
 
-router.post("/daily-report", async (_req, res) => {
+const dailyReportSchema = z.object({
+  accountId: z.string().min(1).optional(),
+  provider: z.enum(["claude", "openai"]).default("claude"),
+});
+
+// accountIdを指定すればそのアカウントのみ、省略すれば全アカウント分をまとめて生成する
+router.post("/daily-report", async (req, res) => {
+  const parsed = dailyReportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { accountId, provider } = parsed.data;
+
   try {
-    const report = await generateAndSaveDailyReport();
-    res.json(report);
+    if (accountId) {
+      const report = await generateAndSaveDailyReport(accountId, provider);
+      return res.json({ reports: [report] });
+    }
+    const results = await generateDailyReportsForAllAccounts(provider);
+    const reports = results.filter((r) => r.ok).map((r) => r.report);
+    const errors = results.filter((r) => !r.ok).map((r) => ({ accountId: r.accountId, error: r.error }));
+    res.json({ reports, errors });
   } catch (e) {
     res.status(502).json({ error: "レポート生成に失敗しました", detail: (e as Error).message });
   }
 });
 
-router.get("/daily-report/history", async (_req, res) => {
-  const reports = await prisma.dailyReport.findMany({ orderBy: { reportDate: "desc" }, take: 90 });
+router.get("/daily-report/history", async (req, res) => {
+  const { accountId } = req.query as { accountId?: string };
+  const reports = await prisma.dailyReport.findMany({
+    where: accountId ? { accountId } : undefined,
+    orderBy: { reportDate: "desc" },
+    take: 90,
+    include: { account: true },
+  });
   res.json(reports);
 });
 

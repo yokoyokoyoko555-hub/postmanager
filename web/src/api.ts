@@ -56,8 +56,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    dailyReport: () => request<DailyReport>("/ai/daily-report", { method: "POST" }),
-    dailyReportHistory: () => request<DailyReport[]>("/ai/daily-report/history"),
+    dailyReport: (data?: { accountId?: string; provider?: "claude" | "openai" }) =>
+      request<{ reports: DailyReport[]; errors?: { accountId: string; error: string }[] }>("/ai/daily-report", {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    dailyReportHistory: (accountId?: string) =>
+      request<DailyReport[]>(`/ai/daily-report/history${accountId ? `?accountId=${accountId}` : ""}`),
   },
   media: {
     presign: (data: { fileName: string; contentType: string }) =>

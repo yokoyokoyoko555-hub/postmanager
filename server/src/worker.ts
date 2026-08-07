@@ -1,7 +1,6 @@
 import "dotenv/config";
 import cron from "node-cron";
-import { generateAndSaveDailyReport } from "./lib/dailyReport.js";
-import { collectMetricsForAccount } from "./lib/metrics.js";
+import { generateDailyReportsForAllAccounts } from "./lib/dailyReport.js";
 import { prisma } from "./lib/prisma.js";
 import { publishDraft } from "./lib/publish.js";
 
@@ -58,20 +57,10 @@ async function runScheduledPosts() {
 }
 
 async function runDailyJob() {
-  const accounts = await prisma.account.findMany({ where: { oauthAccessToken: { not: null } } });
-  for (const account of accounts) {
-    try {
-      await collectMetricsForAccount(account);
-    } catch (e) {
-      console.error(`[worker] metrics collection failed for ${account.handle}: ${(e as Error).message}`);
-    }
-  }
-
-  try {
-    await generateAndSaveDailyReport();
-    console.log("[worker] daily report generated");
-  } catch (e) {
-    console.error(`[worker] daily report generation failed: ${(e as Error).message}`);
+  const results = await generateDailyReportsForAllAccounts();
+  for (const r of results) {
+    if (r.ok) console.log(`[worker] daily report generated for account ${r.accountId}`);
+    else console.error(`[worker] daily report failed for account ${r.accountId}: ${r.error}`);
   }
 }
 

@@ -3,16 +3,14 @@ import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
 import { prisma } from "./prisma.js";
 
-// 前日分の投稿指標・アカウント指標を収集してDBへ保存する
+// 直近48時間分の投稿指標・アカウント指標を収集してDBへ保存する
+// (カレンダー日固定にすると、生成した当日の投稿がレポートに反映されないため
+//  相対的なローリングウィンドウにしている)
 export async function collectMetricsForAccount(account: Account) {
   if (!account.oauthAccessToken) return;
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const start = new Date(yesterday);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(yesterday);
-  end.setHours(23, 59, 59, 999);
+  const end = new Date();
+  const start = new Date(end.getTime() - 48 * 60 * 60 * 1000);
 
   if (account.platform === "x") {
     if (!account.platformUserId) return;

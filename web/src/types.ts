@@ -40,6 +40,8 @@ export interface Draft {
 
 export interface DailyReport {
   id: string;
+  accountId: string;
+  account?: { displayName: string; handle: string };
   reportDate: string;
   reviewText: string;
   improvementsText: string;

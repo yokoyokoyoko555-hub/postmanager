@@ -47,6 +47,7 @@ model Account {
   drafts         Draft[]
   postMetrics    PostMetric[]
   accountMetrics AccountMetric[]
+  dailyReports   DailyReport[]
 
   @@unique([platform, handle])
 }
@@ -122,11 +123,13 @@ model AccountMetric {
 
 model DailyReport {
   id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   reportDate        DateTime @db.Date
   reviewText        String
   improvementsText  String
   nextActionsText   String
   createdAt         DateTime @default(now())
 
-  @@unique([reportDate])
+  @@unique([reportDate, accountId])
 }

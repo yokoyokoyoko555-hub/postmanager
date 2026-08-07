@@ -650,14 +650,22 @@ export default function App() {
   useEffect(() => { reloadAll(); }, []);
 
   const todayStr = new Date().toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE });
-  const latestReport = reports[0] || null;
+  const sortedReports = [...reports].sort((a, b) => new Date(b.reportDate).getTime() - new Date(a.reportDate).getTime());
+  const reportsForActiveAccount = activeAccountId === "all" ? [] : sortedReports.filter((r) => r.accountId === activeAccountId);
+  const latestReportForActiveAccount = reportsForActiveAccount[0] || null;
+  const latestReportPerAccount = accounts
+    .map((a) => ({ account: a, report: sortedReports.find((r) => r.accountId === a.id) || null }))
+    .filter((x): x is { account: Account; report: DailyReport } => x.report !== null);
 
   const generateDailyReport = async () => {
     setReportLoading(true);
     setReportError("");
     try {
-      const report = await api.ai.dailyReport();
-      setReports((prev) => [report, ...prev.filter((r) => r.id !== report.id)]);
+      const { reports: newReports, errors } = await api.ai.dailyReport(
+        activeAccountId === "all" ? undefined : { accountId: activeAccountId },
+      );
+      setReports((prev) => [...newReports, ...prev.filter((r) => !newReports.some((n) => n.id === r.id))]);
+      if (errors?.length) setReportError(`一部のアカウントでレポート生成に失敗しました: ${errors.map((e) => e.error).join(" / ")}`);
     } catch {
       setReportError("レポート生成に失敗しました。もう一度お試しください。");
     } finally {
@@ -911,32 +919,53 @@ export default function App() {
           {tab === "dashboard" ? (
             <div className="max-w-2xl mx-auto flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>毎日11:00に自動更新(本番運用時)・{todayStr}</span>
+                <span className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>
+                  毎日11:00に自動更新(本番運用時)・{todayStr}
+                  {activeAccountId === "all" && accounts.length > 0 && " ・全アカウント分をまとめて生成できます"}
+                </span>
               </div>
               {reportError && <p className="text-sm" style={{ color: RED }}>{reportError}</p>}
-              {!latestReport ? (
+              {activeAccountId !== "all" ? (
+                !latestReportForActiveAccount ? (
+                  <FoilFrame holo>
+                    <div className="p-6 flex flex-col items-center text-center gap-3">
+                      <TrendingUp size={24} style={{ color: HOLO_A }} />
+                      <p className="text-sm" style={{ color: MUTED }}>このアカウントのレポートはまだありません。ボタンから生成すると、直近の投稿と実測の指標をもとに振り返り・改善点・ネクストアクションをAIがまとめます。</p>
+                      <button onClick={generateDailyReport} disabled={reportLoading} className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
+                        {reportLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        {reportLoading ? "生成中…" : "レポートを生成"}
+                      </button>
+                    </div>
+                  </FoilFrame>
+                ) : (
+                  <ReportCard report={latestReportForActiveAccount} />
+                )
+              ) : latestReportPerAccount.length === 0 ? (
                 <FoilFrame holo>
                   <div className="p-6 flex flex-col items-center text-center gap-3">
                     <TrendingUp size={24} style={{ color: HOLO_A }} />
-                    <p className="text-sm" style={{ color: MUTED }}>まだ本日のレポートがありません。ボタンから生成すると、前日の投稿をもとに振り返り・改善点・ネクストアクションをAIがまとめます。</p>
-                    <button onClick={generateDailyReport} disabled={reportLoading} className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
+                    <p className="text-sm" style={{ color: MUTED }}>まだレポートがありません。ボタンを押すと全アカウント分をまとめて生成します。</p>
+                    <button onClick={generateDailyReport} disabled={reportLoading || accounts.length === 0} className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
                       {reportLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      {reportLoading ? "生成中…" : "レポートを生成"}
+                      {reportLoading ? "生成中…" : "全アカウント分を生成"}
                     </button>
                   </div>
                 </FoilFrame>
               ) : (
-                <ReportCard report={latestReport} />
+                latestReportPerAccount.map(({ account, report }) => <ReportCard key={account.id} report={report} />)
               )}
             </div>
           ) : tab === "reports" ? (
-            reports.length === 0 ? (
-              <EmptyState text="過去のレポートはまだありません。ダッシュボードでレポートを生成すると、ここに履歴が溜まっていきます。" />
-            ) : (
-              <div className="max-w-2xl mx-auto flex flex-col gap-4">
-                {reports.map((r) => <ReportCard key={r.id} report={r} />)}
-              </div>
-            )
+            (() => {
+              const visibleReports = activeAccountId === "all" ? sortedReports : sortedReports.filter((r) => r.accountId === activeAccountId);
+              return visibleReports.length === 0 ? (
+                <EmptyState text="過去のレポートはまだありません。ダッシュボードでレポートを生成すると、ここに履歴が溜まっていきます。" />
+              ) : (
+                <div className="max-w-2xl mx-auto flex flex-col gap-4">
+                  {visibleReports.map((r) => <ReportCard key={r.id} report={r} />)}
+                </div>
+              );
+            })()
           ) : tab === "templates" ? (
             templates.length === 0 ? (
               <EmptyState text="テンプレートはまだありません。よく使う投稿文の型を登録しておくと、下書き作成が速くなります。" />
@@ -1022,11 +1051,16 @@ function ReportCard({ report }: { report: DailyReport }) {
   return (
     <FoilFrame holo>
       <div className="p-5 flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp size={15} style={{ color: HOLO_A }} />
-          <span style={{ fontFamily: monoFont, fontSize: 12, color: MUTED }}>{formatDate(report.reportDate)} のデイリーレポート</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={15} style={{ color: HOLO_A }} />
+            <span style={{ fontFamily: monoFont, fontSize: 12, color: MUTED }}>{formatDate(report.reportDate)} のデイリーレポート</span>
+          </div>
+          {report.account && (
+            <span className="text-xs" style={{ color: PAPER, fontFamily: displayFont }}>{report.account.displayName}</span>
+          )}
         </div>
-        <ReportSection label="前日の振り返り" text={report.reviewText} />
+        <ReportSection label="直近の振り返り" text={report.reviewText} />
         <ReportSection label="改善点" text={report.improvementsText} />
         <ReportSection label="ネクストアクション" text={report.nextActionsText} />
       </div>
