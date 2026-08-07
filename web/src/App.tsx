@@ -642,6 +642,19 @@ export default function App() {
         </div>
         <button onClick={() => setSidebarOpen(false)} className="md:hidden p-1" style={{ color: MUTED }}><X size={20} /></button>
       </div>
+      <div className="mx-3 mb-2 text-[10px] tracking-widest uppercase md:hidden" style={{ color: MUTED, fontFamily: monoFont }}>メニュー</div>
+      <div className="md:hidden mb-4">
+        {tabs.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => { setTab(t.id); onNavigate?.(); }} className="flex items-center gap-2 mx-3 px-3 py-2.5 rounded text-sm mb-1 w-[calc(100%-1.5rem)]" style={{ background: active ? CARD : "transparent", color: active ? PAPER : MUTED }}>
+              <Icon size={15} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mx-3 mb-2 border-t md:hidden" style={{ borderColor: HAIRLINE }} />
       <button onClick={() => { setActiveAccountId("all"); onNavigate?.(); }} className="flex items-center gap-2 mx-3 px-3 py-2.5 rounded text-sm mb-1" style={{ background: activeAccountId === "all" ? "rgba(203,162,78,0.12)" : "transparent", color: activeAccountId === "all" ? GOLD : MUTED }}>
         <Users size={15} /> すべてのアカウント
       </button>
@@ -685,17 +698,22 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 sm:py-5" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
-          <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1 min-w-0" style={{ scrollbarWidth: "none" }}>
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 -ml-1.5 mr-1 shrink-0" style={{ color: PAPER }}><Menu size={20} /></button>
-            {tabs.map((t) => {
-              const Icon = t.icon;
-              const active = tab === t.id;
-              return (
-                <button key={t.id} onClick={() => setTab(t.id)} className="flex items-center gap-1.5 px-3 py-2 rounded text-sm shrink-0" style={{ color: active ? PAPER : MUTED, background: active ? CARD : "transparent" }}>
-                  <Icon size={14} /> {t.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 -ml-1.5 shrink-0" style={{ color: PAPER }}><Menu size={20} /></button>
+            <span className="md:hidden text-sm truncate" style={{ color: PAPER, fontFamily: displayFont }}>
+              {tabs.find((t) => t.id === tab)?.label}
+            </span>
+            <div className="hidden md:flex items-center gap-1 overflow-x-auto -mx-1 px-1 min-w-0" style={{ scrollbarWidth: "none" }}>
+              {tabs.map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTab(t.id)} className="flex items-center gap-1.5 px-3 py-2 rounded text-sm shrink-0" style={{ color: active ? PAPER : MUTED, background: active ? CARD : "transparent" }}>
+                    <Icon size={14} /> {t.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {tab !== "dashboard" && tab !== "reports" && tab !== "accounts" && accounts.length > 0 && (
