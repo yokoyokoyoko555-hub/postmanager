@@ -79,8 +79,12 @@ cron.schedule("* * * * *", () => {
   runScheduledPosts().catch((e) => console.error("[worker] runScheduledPosts crashed", e));
 });
 
-cron.schedule("0 11 * * *", () => {
-  runDailyJob().catch((e) => console.error("[worker] runDailyJob crashed", e));
-});
+cron.schedule(
+  "0 11 * * *",
+  () => {
+    runDailyJob().catch((e) => console.error("[worker] runDailyJob crashed", e));
+  },
+  { timezone: "Asia/Tokyo" },
+);
 
-console.log("[worker] started: scheduled posts every minute, daily report at 11:00");
+console.log("[worker] started: scheduled posts every minute, daily report at 11:00 JST");

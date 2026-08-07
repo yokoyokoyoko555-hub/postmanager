@@ -41,6 +41,7 @@ export const api = {
       request<Draft>(`/drafts/${id}/schedule`, { method: "POST", body: JSON.stringify({ scheduledAt }) }),
     unschedule: (id: string) => request<Draft>(`/drafts/${id}/unschedule`, { method: "POST" }),
     togglePosted: (id: string) => request<Draft>(`/drafts/${id}/toggle-posted`, { method: "POST" }),
+    postNow: (id: string) => request<Draft>(`/drafts/${id}/post-now`, { method: "POST" }),
   },
   ai: {
     generateDraft: (data: { accountId: string; input: string; tone: string; provider: "claude" | "openai" }) =>

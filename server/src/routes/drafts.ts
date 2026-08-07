@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import { postDraftNow } from "../lib/publish.js";
 
 const router = Router();
 
@@ -73,6 +74,17 @@ router.post("/:id/unschedule", async (req, res) => {
     data: { status: "draft", scheduledAt: null },
   });
   res.json(draft);
+});
+
+// 即時投稿(予約を待たず今すぐ実際にプラットフォームへ投稿する)
+router.post("/:id/post-now", async (req, res) => {
+  try {
+    const result = await postDraftNow(req.params.id);
+    if (result.ok) return res.json(result.draft);
+    return res.status(502).json({ error: "投稿に失敗しました", detail: result.error, draft: result.draft });
+  } catch (e) {
+    res.status(500).json({ error: "投稿処理でエラーが発生しました", detail: (e as Error).message });
+  }
 });
 
 // 記録用の手動ステータス切替(実投稿を伴わない)

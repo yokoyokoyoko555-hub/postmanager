@@ -1,6 +1,7 @@
 import type { Account, Draft } from "@prisma/client";
 import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
+import { prisma } from "./prisma.js";
 
 export async function publishDraft(draft: Draft, account: Account): Promise<string> {
   if (!account.oauthAccessToken) throw new Error("アカウントが連携されていません");
@@ -35,4 +36,35 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
     accessToken: account.oauthAccessToken,
     creationId,
   });
+}
+
+// 「今すぐ投稿」用: 予約を待たずに1回だけ投稿を試みる(リトライはしない)
+export async function postDraftNow(draftId: string) {
+  const draft = await prisma.draft.findUniqueOrThrow({ where: { id: draftId }, include: { account: true } });
+
+  try {
+    const platformPostId = await publishDraft(draft, draft.account);
+    const [updated] = await prisma.$transaction([
+      prisma.draft.update({
+        where: { id: draft.id },
+        data: { status: "posted", postedAt: new Date(), lastError: null },
+      }),
+      prisma.postLog.create({
+        data: { draftId: draft.id, platformPostId, status: "success" },
+      }),
+    ]);
+    return { ok: true as const, draft: updated };
+  } catch (e) {
+    const message = (e as Error).message;
+    const [updated] = await prisma.$transaction([
+      prisma.draft.update({
+        where: { id: draft.id },
+        data: { status: "failed", lastError: message },
+      }),
+      prisma.postLog.create({
+        data: { draftId: draft.id, status: "failed", errorMessage: message },
+      }),
+    ]);
+    return { ok: false as const, draft: updated, error: message };
+  }
 }

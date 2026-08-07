@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, DailyReport, Draft, Template } from "./types";
@@ -46,15 +46,25 @@ const TONE_OPTIONS = [
   { id: "unbox", label: "開封速報", icon: PackageCheck },
 ] as const;
 
+// このシステムは日本のショップ運用が前提のため、閲覧端末の場所に関わらず
+// 常に日本時間(JST)で表示・入力する。
+const JST_TIMEZONE = "Asia/Tokyo";
+
 function formatDateTime(iso: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return `${d.toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: JST_TIMEZONE })} JST`;
 }
 
 function formatDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit" });
+  return d.toLocaleDateString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: JST_TIMEZONE });
+}
+
+// <input type="datetime-local">の値("YYYY-MM-DDTHH:mm")を、閲覧端末の
+// タイムゾーンに関係なく「日本時間の壁時計時刻」として解釈しUTC ISOに変換する
+function jstLocalInputToIso(localValue: string): string {
+  return new Date(`${localValue}:00+09:00`).toISOString();
 }
 
 /* --------------------------------------------------------- 汎用パーツ --------------------------------------------------------- */
@@ -95,12 +105,13 @@ function FoilFrame({ children, holo = false }: { children: React.ReactNode; holo
 
 /* --------------------------------------------------------- 下書きカード --------------------------------------------------------- */
 function DraftCard({
-  draft, account, onEdit, onDelete, onSchedule, onTogglePosted,
+  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow,
 }: {
   draft: Draft; account?: Account;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void;
-  onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void;
+  onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void; onPostNow: (d: Draft) => void;
 }) {
+  const canPostNow = draft.status !== "posted" && !!account?.connected;
   return (
     <FoilFrame holo={draft.source === "ai"}>
       <div className="p-4 flex flex-col gap-3 h-full">
@@ -129,6 +140,15 @@ function DraftCard({
         <div className="flex items-center justify-between pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <span style={{ fontFamily: monoFont, fontSize: 10, color: MUTED }}>No. {draft.id.slice(-6).toUpperCase()}</span>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPostNow(draft)}
+              disabled={!canPostNow}
+              title={account?.connected ? "今すぐ投稿" : "先にアカウント連携が必要です"}
+              className="p-1.5 rounded hover:opacity-80 transition disabled:opacity-30 disabled:hover:opacity-30"
+              style={{ color: HOLO_A }}
+            >
+              <Send size={15} />
+            </button>
             <button onClick={() => onSchedule(draft)} title="予約日時を設定" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: GOLD }}>
               <Clock size={15} />
             </button>
@@ -264,11 +284,12 @@ function ScheduleModal({ open, onClose, onConfirm, draft }: { open: boolean; onC
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
       <div className="w-full max-w-sm rounded-xl p-5" style={{ background: PANEL, border: `1px solid ${HAIRLINE}` }}>
-        <h3 style={{ fontFamily: displayFont, color: PAPER }} className="text-base uppercase mb-4">投稿予約日時</h3>
+        <h3 style={{ fontFamily: displayFont, color: PAPER }} className="text-base uppercase mb-1">投稿予約日時</h3>
+        <p className="text-xs mb-3" style={{ color: MUTED, fontFamily: monoFont }}>日本時間(JST)で入力してください</p>
         <input type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full rounded px-3 py-2 text-sm mb-4" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }} />
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
-          <button onClick={() => { if (dt) onConfirm(new Date(dt).toISOString()); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>予約する</button>
+          <button onClick={() => { if (dt) onConfirm(jstLocalInputToIso(dt)); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>予約する</button>
         </div>
       </div>
     </div>
@@ -494,7 +515,7 @@ export default function App() {
 
   useEffect(() => { reloadAll(); }, []);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE });
   const latestReport = reports[0] || null;
 
   const generateDailyReport = async () => {
@@ -543,6 +564,22 @@ export default function App() {
   const togglePosted = async (draft: Draft) => {
     const updated = await api.drafts.togglePosted(draft.id);
     setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+  };
+
+  const postNow = async (draft: Draft) => {
+    const account = accountOf(draft.accountId);
+    if (!account?.connected) {
+      alert("先にアカウント連携が必要です(「アカウント」タブから連携できます)");
+      return;
+    }
+    if (!confirm(`${account.displayName}(${account.handle})として今すぐ投稿します。よろしいですか?`)) return;
+    try {
+      const updated = await api.drafts.postNow(draft.id);
+      setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    } catch (e) {
+      alert(`投稿に失敗しました: ${(e as Error).message}`);
+      reloadAll();
+    }
   };
 
   const confirmSchedule = async (iso: string) => {
@@ -786,7 +823,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {visibleDrafts.map((d) => (
-                <DraftCard key={d.id} draft={d} account={accountOf(d.accountId)} onEdit={(dd) => { setEditingDraft(dd); setEditorOpen(true); }} onDelete={deleteDraft} onSchedule={(dd) => setScheduleTarget(dd)} onTogglePosted={togglePosted} />
+                <DraftCard key={d.id} draft={d} account={accountOf(d.accountId)} onEdit={(dd) => { setEditingDraft(dd); setEditorOpen(true); }} onDelete={deleteDraft} onSchedule={(dd) => setScheduleTarget(dd)} onTogglePosted={togglePosted} onPostNow={postNow} />
               ))}
             </div>
           )}
