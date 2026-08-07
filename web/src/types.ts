@@ -48,3 +48,28 @@ export interface DailyReport {
   nextActionsText: string;
   createdAt: string;
 }
+
+export interface AccountMetricData {
+  id: string;
+  followersCount: number;
+  profileViews: number;
+  reach: number;
+  capturedAt: string;
+}
+
+export interface PostMetricData {
+  id: string;
+  platformPostId: string;
+  likes: number;
+  reposts: number;
+  replies: number;
+  impressions: number;
+  saves: number;
+  capturedAt: string;
+  text: string | null;
+}
+
+export interface AccountAnalytics {
+  accountMetric: AccountMetricData | null;
+  postMetrics: PostMetricData[];
+}

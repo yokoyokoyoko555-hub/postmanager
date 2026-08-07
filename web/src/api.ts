@@ -1,4 +1,4 @@
-import type { Account, DailyReport, Draft, Template } from "./types";
+import type { Account, AccountAnalytics, DailyReport, Draft, Template } from "./types";
 
 const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_BASE_URL || "/api";
 
@@ -63,6 +63,9 @@ export const api = {
       }),
     dailyReportHistory: (accountId?: string) =>
       request<DailyReport[]>(`/ai/daily-report/history${accountId ? `?accountId=${accountId}` : ""}`),
+  },
+  metrics: {
+    get: (accountId: string) => request<AccountAnalytics>(`/metrics?accountId=${accountId}`),
   },
   media: {
     presign: (data: { fileName: string; contentType: string }) =>

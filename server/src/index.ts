@@ -8,6 +8,7 @@ import accountsRouter from "./routes/accounts.js";
 import aiRouter from "./routes/ai.js";
 import draftsRouter from "./routes/drafts.js";
 import mediaRouter from "./routes/media.js";
+import metricsRouter from "./routes/metrics.js";
 import templatesRouter from "./routes/templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,7 @@ app.use("/api/templates", templatesRouter);
 app.use("/api/drafts", draftsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/media", mediaRouter);
+app.use("/api/metrics", metricsRouter);
 
 // 本番ビルド時はReactの静的ファイルを配信する
 if (process.env.NODE_ENV === "production") {

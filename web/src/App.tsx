@@ -3,10 +3,10 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
-import type { Account, DailyReport, Draft, PostMode, Template } from "./types";
+import type { Account, AccountAnalytics, DailyReport, Draft, PostMode, Template } from "./types";
 
 const INK = "#0E0F13";
 const PANEL = "#17181F";
@@ -633,6 +633,9 @@ export default function App() {
   const [aiOpen, setAiOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [accountAnalytics, setAccountAnalytics] = useState<AccountAnalytics | null>(null);
+  const [reportsPage, setReportsPage] = useState(0);
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
 
   const reloadAll = async () => {
     try {
@@ -648,6 +651,16 @@ export default function App() {
   };
 
   useEffect(() => { reloadAll(); }, []);
+
+  useEffect(() => {
+    if (tab === "dashboard" && activeAccountId !== "all") {
+      api.metrics.get(activeAccountId).then(setAccountAnalytics).catch(() => setAccountAnalytics(null));
+    } else {
+      setAccountAnalytics(null);
+    }
+  }, [tab, activeAccountId]);
+
+  useEffect(() => { setReportsPage(0); }, [activeAccountId, tab]);
 
   const todayStr = new Date().toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE });
   const sortedReports = [...reports].sort((a, b) => new Date(b.reportDate).getTime() - new Date(a.reportDate).getTime());
@@ -925,6 +938,9 @@ export default function App() {
                 </span>
               </div>
               {reportError && <p className="text-sm" style={{ color: RED }}>{reportError}</p>}
+              {activeAccountId !== "all" && accountAnalytics && (
+                <AnalyticsSummary data={accountAnalytics} platform={accountOf(activeAccountId)?.platform ?? "x"} />
+              )}
               {activeAccountId !== "all" ? (
                 !latestReportForActiveAccount ? (
                   <FoilFrame holo>
@@ -958,11 +974,29 @@ export default function App() {
           ) : tab === "reports" ? (
             (() => {
               const visibleReports = activeAccountId === "all" ? sortedReports : sortedReports.filter((r) => r.accountId === activeAccountId);
+              const pageSize = 10;
+              const totalPages = Math.max(1, Math.ceil(visibleReports.length / pageSize));
+              const page = Math.min(reportsPage, totalPages - 1);
+              const paged = visibleReports.slice(page * pageSize, page * pageSize + pageSize);
               return visibleReports.length === 0 ? (
                 <EmptyState text="過去のレポートはまだありません。ダッシュボードでレポートを生成すると、ここに履歴が溜まっていきます。" />
               ) : (
-                <div className="max-w-2xl mx-auto flex flex-col gap-4">
-                  {visibleReports.map((r) => <ReportCard key={r.id} report={r} />)}
+                <div className="max-w-2xl mx-auto flex flex-col gap-3">
+                  {paged.map((r) => (
+                    <ReportAccordionItem
+                      key={r.id}
+                      report={r}
+                      open={expandedReportId === r.id}
+                      onToggle={() => setExpandedReportId((prev) => (prev === r.id ? null : r.id))}
+                    />
+                  ))}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-2">
+                      <button onClick={() => setReportsPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="px-3 py-1.5 rounded text-xs disabled:opacity-30" style={{ color: MUTED, border: `1px solid ${HAIRLINE}` }}>前へ</button>
+                      <span className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>{page + 1} / {totalPages}</span>
+                      <button onClick={() => setReportsPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="px-3 py-1.5 rounded text-xs disabled:opacity-30" style={{ color: MUTED, border: `1px solid ${HAIRLINE}` }}>次へ</button>
+                    </div>
+                  )}
                 </div>
               );
             })()
@@ -1064,6 +1098,86 @@ function ReportCard({ report }: { report: DailyReport }) {
         <ReportSection label="改善点" text={report.improvementsText} />
         <ReportSection label="ネクストアクション" text={report.nextActionsText} />
       </div>
+    </FoilFrame>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded p-2.5 text-center" style={{ background: CARD, border: `1px solid ${HAIRLINE}` }}>
+      <div className="text-lg" style={{ color: PAPER, fontFamily: displayFont }}>{value.toLocaleString()}</div>
+      <div className="text-[10px]" style={{ color: MUTED, fontFamily: monoFont }}>{label}</div>
+    </div>
+  );
+}
+
+function AnalyticsSummary({ data, platform }: { data: AccountAnalytics; platform: Account["platform"] }) {
+  const am = data.accountMetric;
+  return (
+    <FoilFrame>
+      <div className="p-4 flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={14} style={{ color: HOLO_A }} />
+          <span className="text-xs uppercase tracking-wide" style={{ color: MUTED, fontFamily: monoFont }}>アナリティクス</span>
+        </div>
+        {!am ? (
+          <p className="text-xs" style={{ color: MUTED }}>まだ指標データがありません。「レポートを生成」を押すと最新の指標を取得します。</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            <StatTile label="フォロワー数" value={am.followersCount} />
+            {platform === "instagram" ? (
+              <>
+                <StatTile label="リーチ" value={am.reach} />
+                <StatTile label="プロフィール閲覧" value={am.profileViews} />
+              </>
+            ) : (
+              <>
+                <StatTile label="投稿数(指標あり)" value={data.postMetrics.length} />
+                <StatTile
+                  label="合計インプレッション"
+                  value={data.postMetrics.reduce((sum, m) => sum + m.impressions, 0)}
+                />
+              </>
+            )}
+          </div>
+        )}
+        {data.postMetrics.length > 0 && (
+          <div className="flex flex-col gap-1.5 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+            {data.postMetrics.slice(0, 5).map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate" style={{ color: PAPER }}>{m.text ? m.text.slice(0, 30) : "(本文不明)"}</span>
+                <span className="shrink-0" style={{ color: MUTED, fontFamily: monoFont }}>
+                  ❤{m.likes} 🔁{m.reposts} 💬{m.replies} 👁{m.impressions}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </FoilFrame>
+  );
+}
+
+function ReportAccordionItem({ report, open, onToggle }: { report: DailyReport; open: boolean; onToggle: () => void }) {
+  return (
+    <FoilFrame holo>
+      <button onClick={onToggle} className="w-full flex items-center justify-between gap-2 p-4 text-left">
+        <div className="flex items-center gap-2 min-w-0">
+          <TrendingUp size={15} style={{ color: HOLO_A }} className="shrink-0" />
+          <span className="truncate" style={{ fontFamily: monoFont, fontSize: 12, color: MUTED }}>{formatDate(report.reportDate)}</span>
+          {report.account && (
+            <span className="truncate text-xs" style={{ color: PAPER, fontFamily: displayFont }}>{report.account.displayName}</span>
+          )}
+        </div>
+        <ChevronDown size={16} className="shrink-0" style={{ color: MUTED, transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-4">
+          <ReportSection label="直近の振り返り" text={report.reviewText} />
+          <ReportSection label="改善点" text={report.improvementsText} />
+          <ReportSection label="ネクストアクション" text={report.nextActionsText} />
+        </div>
+      )}
     </FoilFrame>
   );
 }
