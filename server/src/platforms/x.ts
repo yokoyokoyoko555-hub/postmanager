@@ -101,7 +101,15 @@ export async function uploadMedia(accessToken: string, imageBuffer: Buffer, mime
     },
     body: form,
   });
-  if (!res.ok) throw new Error(`X media upload failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("X media upload failed", {
+      status: res.status,
+      headers: Object.fromEntries(res.headers.entries()),
+      body,
+    });
+    throw new Error(`X media upload failed: ${res.status} ${body}`);
+  }
   const data = (await res.json()) as { media_id_string: string };
   return data.media_id_string;
 }
