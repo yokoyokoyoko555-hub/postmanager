@@ -26,9 +26,9 @@ export const api = {
   },
   templates: {
     list: () => request<Template[]>("/templates"),
-    create: (data: { title: string; body: string }) =>
+    create: (data: { title: string; body: string; accountId: string | null }) =>
       request<Template>("/templates", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: { title: string; body: string }) =>
+    update: (id: string, data: { title: string; body: string; accountId: string | null }) =>
       request<Template>(`/templates/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id: string) => request<null>(`/templates/${id}`, { method: "DELETE" }),
   },

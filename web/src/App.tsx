@@ -244,6 +244,8 @@ function DraftEditorModal({
     if (t) setText(t.body);
   };
 
+  const templatesForAccount = templates.filter((t) => t.accountId === null || t.accountId === accountId);
+
   const selectRepostTarget = (targetId: string) => {
     setQuoteTargetId(targetId);
     if (postMode === "repost") {
@@ -316,12 +318,12 @@ function DraftEditorModal({
               )}
             </div>
           )}
-          {templates.length > 0 && postMode !== "repost" && (
+          {templatesForAccount.length > 0 && postMode !== "repost" && (
             <div>
               <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>テンプレートから作成(任意)</label>
               <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
                 <option value="">選択しない</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                {templatesForAccount.map((t) => <option key={t.id} value={t.id}>{t.accountId ? t.title : `${t.title}(共通)`}</option>)}
               </select>
             </div>
           )}
@@ -446,10 +448,21 @@ function ScheduleModal({ open, onClose, onConfirm, draft }: { open: boolean; onC
 }
 
 /* --------------------------------------------------------- テンプレート編集モーダル --------------------------------------------------------- */
-function TemplateEditorModal({ open, onClose, onSave, template }: { open: boolean; onClose: () => void; onSave: (v: { title: string; body: string }) => void; template: Template | null }) {
+function TemplateEditorModal({
+  open, onClose, onSave, template, accounts, defaultAccountId,
+}: {
+  open: boolean; onClose: () => void;
+  onSave: (v: { title: string; body: string; accountId: string | null }) => void;
+  template: Template | null; accounts: Account[]; defaultAccountId: string | null;
+}) {
   const [title, setTitle] = useState(template?.title || "");
   const [body, setBody] = useState(template?.body || "");
-  useEffect(() => { setTitle(template?.title || ""); setBody(template?.body || ""); }, [template, open]);
+  const [accountId, setAccountId] = useState<string | null>(template ? template.accountId : defaultAccountId);
+  useEffect(() => {
+    setTitle(template?.title || "");
+    setBody(template?.body || "");
+    setAccountId(template ? template.accountId : defaultAccountId);
+  }, [template, open, defaultAccountId]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
@@ -464,6 +477,13 @@ function TemplateEditorModal({ open, onClose, onSave, template }: { open: boolea
             <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }} placeholder="例: 新入荷速報" />
           </div>
           <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>公開範囲</label>
+            <select value={accountId ?? ""} onChange={(e) => setAccountId(e.target.value || null)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
+              <option value="">共通(すべてのアカウント)</option>
+              {accounts.map((a) => <option key={a.id} value={a.id}>{a.displayName}専用</option>)}
+            </select>
+          </div>
+          <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>
               本文 <span style={{ color: HOLO_A }}>{"{商品名}"} {"{URL}"} のように差し替え箇所を波括弧で書けます</span>
             </label>
@@ -472,7 +492,7 @@ function TemplateEditorModal({ open, onClose, onSave, template }: { open: boolea
         </div>
         <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
-          <button onClick={() => { if (title.trim() && body.trim()) onSave({ title, body }); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>保存する</button>
+          <button onClick={() => { if (title.trim() && body.trim()) onSave({ title, body, accountId }); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>保存する</button>
         </div>
       </div>
     </div>
@@ -787,12 +807,12 @@ export default function App() {
     setScheduleTarget(null);
   };
 
-  const saveTemplate = async ({ title, body }: { title: string; body: string }) => {
+  const saveTemplate = async ({ title, body, accountId }: { title: string; body: string; accountId: string | null }) => {
     if (editingTemplate) {
-      const updated = await api.templates.update(editingTemplate.id, { title, body });
+      const updated = await api.templates.update(editingTemplate.id, { title, body, accountId });
       setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     } else {
-      const created = await api.templates.create({ title, body });
+      const created = await api.templates.create({ title, body, accountId });
       setTemplates((prev) => [created, ...prev]);
     }
     setTemplateEditorOpen(false);
@@ -804,11 +824,11 @@ export default function App() {
     setTemplates((prev) => prev.filter((x) => x.id !== t.id));
   };
 
-  const saveTextAsTemplate = async (body: string) => {
+  const saveTextAsTemplate = async (body: string, accountId: string | null = null) => {
     if (!body.trim()) return;
     const title = window.prompt("テンプレート名を入力してください");
     if (!title) return;
-    const created = await api.templates.create({ title, body });
+    const created = await api.templates.create({ title, body, accountId });
     setTemplates((prev) => [created, ...prev]);
     alert("テンプレートに保存しました");
   };
@@ -975,6 +995,21 @@ export default function App() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2 px-4 sm:px-6 py-2" style={{ borderBottom: `1px solid ${HAIRLINE}`, background: PANEL }}>
+          <Users size={13} style={{ color: MUTED }} className="shrink-0" />
+          <select
+            value={activeAccountId}
+            onChange={(e) => setActiveAccountId(e.target.value)}
+            className="text-sm rounded px-2 py-1.5 max-w-full"
+            style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}
+          >
+            <option value="all">すべてのアカウント</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.displayName}{!a.connected ? "(未連携)" : ""}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {loadError && (
             <div className="max-w-2xl mx-auto mb-4 p-3 rounded text-sm flex items-center gap-2" style={{ background: "rgba(201,106,90,0.12)", color: RED }}>
@@ -1056,32 +1091,61 @@ export default function App() {
           ) : tab === "templates" ? (
             templates.length === 0 ? (
               <EmptyState text="テンプレートはまだありません。よく使う投稿文の型を登録しておくと、下書き作成が速くなります。" />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {templates.map((t) => (
-                  <FoilFrame key={t.id}>
-                    <div className="p-4 flex flex-col gap-3 h-full">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium" style={{ color: PAPER, fontFamily: displayFont }}>{t.title}</span>
-                      </div>
-                      <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{t.body}</p>
-                      <button
-                        onClick={() => createDraftFromTemplate(t)}
-                        disabled={accounts.length === 0}
-                        className="flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium disabled:opacity-40"
-                        style={{ background: GOLD, color: INK }}
-                      >
-                        <FileText size={13} /> この内容で下書き作成
-                      </button>
-                      <div className="flex justify-end gap-1 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
-                        <button onClick={() => { setEditingTemplate(t); setTemplateEditorOpen(true); }} className="p-1.5 rounded" style={{ color: MUTED }}><Pencil size={14} /></button>
-                        <button onClick={() => deleteTemplate(t)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
-                      </div>
+            ) : (() => {
+              const sharedTemplates = templates.filter((t) => t.accountId === null);
+              const scopedTemplates = activeAccountId === "all"
+                ? templates.filter((t) => t.accountId !== null)
+                : templates.filter((t) => t.accountId === activeAccountId);
+
+              const renderCard = (t: Template) => (
+                <FoilFrame key={t.id}>
+                  <div className="p-4 flex flex-col gap-3 h-full">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium" style={{ color: PAPER, fontFamily: displayFont }}>{t.title}</span>
+                      <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded" style={{ color: MUTED, fontFamily: monoFont, border: `1px solid ${HAIRLINE}` }}>
+                        {t.accountId ? accountOf(t.accountId)?.displayName ?? "?" : "共通"}
+                      </span>
                     </div>
-                  </FoilFrame>
-                ))}
-              </div>
-            )
+                    <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{t.body}</p>
+                    <button
+                      onClick={() => createDraftFromTemplate(t)}
+                      disabled={accounts.length === 0}
+                      className="flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium disabled:opacity-40"
+                      style={{ background: GOLD, color: INK }}
+                    >
+                      <FileText size={13} /> この内容で下書き作成
+                    </button>
+                    <div className="flex justify-end gap-1 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                      <button onClick={() => { setEditingTemplate(t); setTemplateEditorOpen(true); }} className="p-1.5 rounded" style={{ color: MUTED }}><Pencil size={14} /></button>
+                      <button onClick={() => deleteTemplate(t)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                </FoilFrame>
+              );
+
+              return (
+                <div className="flex flex-col gap-6">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>共通テンプレート</div>
+                    {sharedTemplates.length === 0 ? (
+                      <p className="text-xs" style={{ color: MUTED }}>まだありません。</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{sharedTemplates.map(renderCard)}</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>
+                      {activeAccountId === "all" ? "アカウント専用テンプレート" : `${accountOf(activeAccountId)?.displayName ?? ""}専用テンプレート`}
+                    </div>
+                    {scopedTemplates.length === 0 ? (
+                      <p className="text-xs" style={{ color: MUTED }}>まだありません。</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{scopedTemplates.map(renderCard)}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
           ) : tab === "accounts" ? (
             accounts.length === 0 ? (
               <EmptyState text="アカウントがまだ登録されていません。右上の「アカウント追加」から登録しましょう。" />
@@ -1160,7 +1224,14 @@ export default function App() {
         onSaveAsTemplate={saveTextAsTemplate}
       />
       <ScheduleModal open={!!scheduleTarget} draft={scheduleTarget} onClose={() => setScheduleTarget(null)} onConfirm={confirmSchedule} />
-      <TemplateEditorModal open={templateEditorOpen} template={editingTemplate} onClose={() => { setTemplateEditorOpen(false); setEditingTemplate(null); }} onSave={saveTemplate} />
+      <TemplateEditorModal
+        open={templateEditorOpen}
+        template={editingTemplate}
+        accounts={accounts}
+        defaultAccountId={activeAccountId === "all" ? null : activeAccountId}
+        onClose={() => { setTemplateEditorOpen(false); setEditingTemplate(null); }}
+        onSave={saveTemplate}
+      />
       <AccountEditorModal open={accountEditorOpen} onClose={() => setAccountEditorOpen(false)} onSave={saveAccount} />
       <AIGenerateModal open={aiOpen} accounts={accounts} defaultAccountId={activeAccountId === "all" ? accounts[0]?.id : activeAccountId} onClose={() => setAiOpen(false)} onAdopt={adoptAIVariant} />
     </div>
