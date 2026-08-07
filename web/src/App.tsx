@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, DailyReport, Draft, Template } from "./types";
@@ -68,11 +68,11 @@ function jstLocalInputToIso(localValue: string): string {
 }
 
 /* --------------------------------------------------------- 汎用パーツ --------------------------------------------------------- */
-function StatusPill({ status, scheduledAt }: { status: Draft["status"]; scheduledAt: string | null }) {
+function StatusPill({ status, scheduledAt, postedAt }: { status: Draft["status"]; scheduledAt: string | null; postedAt?: string | null }) {
   const map: Record<Draft["status"], { label: string; color: string; bg: string }> = {
     draft: { label: "DRAFT", color: MUTED, bg: "rgba(139,141,155,0.12)" },
     scheduled: { label: `予約 ${formatDateTime(scheduledAt)}`, color: GOLD, bg: "rgba(203,162,78,0.14)" },
-    posted: { label: "POSTED", color: GREEN, bg: "rgba(95,174,123,0.14)" },
+    posted: { label: postedAt ? `POSTED ${formatDateTime(postedAt)}` : "POSTED", color: GREEN, bg: "rgba(95,174,123,0.14)" },
     failed: { label: "FAILED", color: RED, bg: "rgba(201,106,90,0.14)" },
   };
   const s = map[status] || map.draft;
@@ -119,7 +119,7 @@ function DraftCard({
           <span style={{ fontFamily: monoFont, fontSize: 11, color: MUTED }}>
             {account ? account.handle : "未割当"}
           </span>
-          <StatusPill status={draft.status} scheduledAt={draft.scheduledAt} />
+          <StatusPill status={draft.status} scheduledAt={draft.scheduledAt} postedAt={draft.postedAt} />
         </div>
         <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1" style={{ color: PAPER, fontFamily: bodyFont, minHeight: 60 }}>
           {draft.text || <span style={{ color: MUTED }}>本文なし</span>}
@@ -481,14 +481,17 @@ export default function App() {
   useFonts();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [activeAccountId, setActiveAccountId] = useState("all");
+  const [activeAccountId, setActiveAccountId] = useState(() => localStorage.getItem("xpm:activeAccountId") || "all");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState("");
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => localStorage.getItem("xpm:tab") || "dashboard");
   const [ready, setReady] = useState(false);
+
+  useEffect(() => { localStorage.setItem("xpm:tab", tab); }, [tab]);
+  useEffect(() => { localStorage.setItem("xpm:activeAccountId", activeAccountId); }, [activeAccountId]);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingDraft, setEditingDraft] = useState<Draft | null>(null);
@@ -535,10 +538,12 @@ export default function App() {
     if (activeAccountId !== "all" && d.accountId !== activeAccountId) return false;
     if (tab === "drafts") return d.status === "draft";
     if (tab === "scheduled") return d.status === "scheduled";
+    if (tab === "posted") return d.status === "posted";
     if (tab === "failed") return d.status === "failed";
     return true;
   }).sort((a, b) => {
     if (tab === "scheduled") return new Date(a.scheduledAt || 0).getTime() - new Date(b.scheduledAt || 0).getTime();
+    if (tab === "posted") return new Date(b.postedAt || 0).getTime() - new Date(a.postedAt || 0).getTime();
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
@@ -627,6 +632,7 @@ export default function App() {
     { id: "dashboard", label: "ダッシュボード", icon: TrendingUp },
     { id: "drafts", label: "下書き", icon: FileText },
     { id: "scheduled", label: "予約投稿", icon: Calendar },
+    { id: "posted", label: "投稿履歴", icon: CheckCircle2 },
     { id: "failed", label: "失敗", icon: AlertTriangle },
     { id: "templates", label: "テンプレート", icon: Layers },
     { id: "accounts", label: "アカウント", icon: Users },
@@ -834,6 +840,7 @@ export default function App() {
           ) : visibleDrafts.length === 0 ? (
             <EmptyState text={
               tab === "scheduled" ? "予約中の投稿はありません。下書きから時計アイコンで日時を設定できます。"
+                : tab === "posted" ? "投稿済みの投稿はまだありません。「今すぐ投稿」や予約投稿が実行されるとここに履歴が残ります。"
                 : tab === "failed" ? "失敗した投稿はありません。"
                 : accounts.length === 0 ? "先に「アカウント」タブでアカウントを登録してください。"
                 : "下書きはまだありません。右上の「新規下書き」か「AI生成」から作成しましょう。"
