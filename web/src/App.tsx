@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, DailyReport, Draft, PostMode, Template } from "./types";
@@ -756,6 +756,22 @@ export default function App() {
     setAccounts((prev) => prev.filter((x) => x.id !== a.id));
   };
 
+  const moveAccount = async (id: string, direction: "up" | "down") => {
+    const index = accounts.findIndex((a) => a.id === id);
+    const swapWith = direction === "up" ? index - 1 : index + 1;
+    if (index === -1 || swapWith < 0 || swapWith >= accounts.length) return;
+    const reordered = [...accounts];
+    [reordered[index], reordered[swapWith]] = [reordered[swapWith], reordered[index]];
+    setAccounts(reordered);
+    try {
+      const updated = await api.accounts.reorder(reordered.map((a) => a.id));
+      setAccounts(updated);
+    } catch (e) {
+      alert(`並び替えに失敗しました: ${(e as Error).message}`);
+      reloadAll();
+    }
+  };
+
   const adoptAIVariant = async ({ accountId, text }: { accountId: string; text: string }) => {
     const created = await api.drafts.create({ accountId, text, source: "ai" });
     setDrafts((prev) => [created, ...prev]);
@@ -963,7 +979,11 @@ export default function App() {
                           {a.platform === "x" ? "Xと連携する" : "Instagramと連携する"}
                         </a>
                       )}
-                      <div className="flex justify-end gap-1 pt-2 mt-auto" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                      <div className="flex items-center justify-between pt-2 mt-auto" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => moveAccount(a.id, "up")} disabled={accounts[0]?.id === a.id} className="p-1.5 rounded disabled:opacity-30" style={{ color: MUTED }}><ChevronUp size={14} /></button>
+                          <button onClick={() => moveAccount(a.id, "down")} disabled={accounts[accounts.length - 1]?.id === a.id} className="p-1.5 rounded disabled:opacity-30" style={{ color: MUTED }}><ChevronDown size={14} /></button>
+                        </div>
                         <button onClick={() => deleteAccount(a)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
                       </div>
                     </div>

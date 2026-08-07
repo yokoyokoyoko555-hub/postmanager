@@ -21,6 +21,8 @@ export const api = {
     create: (data: { platform: string; displayName: string; handle: string }) =>
       request<Account>("/accounts", { method: "POST", body: JSON.stringify(data) }),
     remove: (id: string) => request<null>(`/accounts/${id}`, { method: "DELETE" }),
+    reorder: (orderedIds: string[]) =>
+      request<Account[]>("/accounts/reorder", { method: "PUT", body: JSON.stringify({ orderedIds }) }),
   },
   templates: {
     list: () => request<Template[]>("/templates"),

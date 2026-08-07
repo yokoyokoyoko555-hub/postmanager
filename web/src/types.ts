@@ -9,6 +9,7 @@ export interface Account {
   displayName: string;
   handle: string;
   connected: boolean;
+  sortOrder: number;
   createdAt: string;
 }
 

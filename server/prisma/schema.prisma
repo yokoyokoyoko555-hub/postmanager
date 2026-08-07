@@ -41,6 +41,7 @@ model Account {
   tokenExpiresAt     DateTime?
   platformUserId     String?
   igBusinessAccountId String?
+  sortOrder          Int      @default(0)
   createdAt          DateTime @default(now())
 
   drafts         Draft[]
