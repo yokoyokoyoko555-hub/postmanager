@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const API_BASE = "https://api.twitter.com/2";
-const MEDIA_UPLOAD_URL = "https://upload.x.com/1.1/media/upload.json";
+const MEDIA_UPLOAD_BASE = "https://api.x.com/2/media/upload";
 
 const SCOPES = ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].join(" ");
 
@@ -88,33 +88,54 @@ export async function getMe(accessToken: string) {
   };
 }
 
-// v1.1メディアアップロード → v2投稿のmedia_idsに紐付ける
+function browserLikeHeaders(accessToken: string, extra?: Record<string, string>) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "*/*",
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    ...extra,
+  };
+}
+
+async function throwWithDiagnostics(label: string, res: Response): Promise<never> {
+  const body = await res.text();
+  console.error(label, { status: res.status, headers: Object.fromEntries(res.headers.entries()), body });
+  throw new Error(`${label}: ${res.status} ${body}`);
+}
+
+// X API v2のメディアアップロード(INIT→APPEND→FINALIZE)。
+// 旧v1.1 upload.x.comはCloudflareのボット対策で弾かれるため、投稿と同じapi.x.comドメインを使う。
 export async function uploadMedia(accessToken: string, imageBuffer: Buffer, mimeType: string) {
-  const form = new FormData();
-  form.append("media", new Blob([new Uint8Array(imageBuffer)], { type: mimeType }));
-  const res = await fetch(MEDIA_UPLOAD_URL, {
+  const category = mimeType === "image/gif" ? "tweet_gif" : "tweet_image";
+
+  const initRes = await fetch(`${MEDIA_UPLOAD_BASE}/initialize`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      // Cloudflareのボット対策(本文なし403)を避けるため、ブラウザに近いヘッダーを明示的に付与
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      Accept: "*/*",
-      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-    },
+    headers: browserLikeHeaders(accessToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ media_type: mimeType, media_category: category, total_bytes: imageBuffer.length }),
+  });
+  if (!initRes.ok) await throwWithDiagnostics("X media upload (initialize) failed", initRes);
+  const initData = (await initRes.json()) as { data: { id: string } };
+  const mediaId = initData.data.id;
+
+  const form = new FormData();
+  form.append("segment_index", "0");
+  form.append("media", new Blob([new Uint8Array(imageBuffer)], { type: mimeType }));
+  const appendRes = await fetch(`${MEDIA_UPLOAD_BASE}/${mediaId}/append`, {
+    method: "POST",
+    headers: browserLikeHeaders(accessToken),
     body: form,
   });
-  if (!res.ok) {
-    const body = await res.text();
-    console.error("X media upload failed", {
-      status: res.status,
-      headers: Object.fromEntries(res.headers.entries()),
-      body,
-    });
-    throw new Error(`X media upload failed: ${res.status} ${body}`);
-  }
-  const data = (await res.json()) as { media_id_string: string };
-  return data.media_id_string;
+  if (!appendRes.ok) await throwWithDiagnostics("X media upload (append) failed", appendRes);
+
+  const finalizeRes = await fetch(`${MEDIA_UPLOAD_BASE}/${mediaId}/finalize`, {
+    method: "POST",
+    headers: browserLikeHeaders(accessToken, { "Content-Type": "application/json" }),
+  });
+  if (!finalizeRes.ok) await throwWithDiagnostics("X media upload (finalize) failed", finalizeRes);
+
+  return mediaId;
 }
 
 export function guessMimeType(url: string): string {
