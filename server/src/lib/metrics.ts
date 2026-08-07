@@ -2,6 +2,7 @@ import type { Account } from "@prisma/client";
 import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
 import { prisma } from "./prisma.js";
+import { ensureFreshXToken } from "./xAuth.js";
 
 // 直近48時間分の投稿指標・アカウント指標を収集してDBへ保存する
 // (カレンダー日固定にすると、生成した当日の投稿がレポートに反映されないため
@@ -9,13 +10,17 @@ import { prisma } from "./prisma.js";
 export async function collectMetricsForAccount(account: Account) {
   if (!account.oauthAccessToken) return;
 
+  account = await ensureFreshXToken(account);
+  const accessToken = account.oauthAccessToken;
+  if (!accessToken) return;
+
   const end = new Date();
   const start = new Date(end.getTime() - 48 * 60 * 60 * 1000);
 
   if (account.platform === "x") {
     if (!account.platformUserId) return;
     const tweets = await x.getOwnTweetsWithMetrics({
-      accessToken: account.oauthAccessToken,
+      accessToken,
       userId: account.platformUserId,
       startTime: start.toISOString(),
       endTime: end.toISOString(),
@@ -33,7 +38,7 @@ export async function collectMetricsForAccount(account: Account) {
         },
       });
     }
-    const me = await x.getMe(account.oauthAccessToken);
+    const me = await x.getMe(accessToken);
     await prisma.accountMetric.create({
       data: {
         accountId: account.id,
@@ -45,11 +50,11 @@ export async function collectMetricsForAccount(account: Account) {
     if (!account.igBusinessAccountId) return;
     const followers = await instagram.getFollowersCount({
       igUserId: account.igBusinessAccountId,
-      accessToken: account.oauthAccessToken,
+      accessToken,
     });
     const insights = await instagram.getAccountInsights({
       igUserId: account.igBusinessAccountId,
-      accessToken: account.oauthAccessToken,
+      accessToken,
     });
     const metricValue = (name: string) =>
       insights.data.find((d) => d.name === name)?.values?.[0]?.value ?? 0;
