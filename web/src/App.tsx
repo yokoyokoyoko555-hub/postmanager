@@ -3,10 +3,10 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
-import type { Account, DailyReport, Draft, Template } from "./types";
+import type { Account, DailyReport, Draft, PostMode, Template } from "./types";
 
 const INK = "#0E0F13";
 const PANEL = "#17181F";
@@ -137,6 +137,11 @@ function DraftCard({
           </span>
           <StatusPill status={draft.status} scheduledAt={draft.scheduledAt} postedAt={draft.postedAt} />
         </div>
+        {draft.postMode !== "post" && (
+          <span className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded text-[10px]" style={{ color: HOLO_A, background: "rgba(111,214,201,0.12)", fontFamily: monoFont }}>
+            <Repeat size={10} /> {draft.postMode === "repost" ? "リポスト" : "引用リポスト"}
+          </span>
+        )}
         <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1" style={{ color: PAPER, fontFamily: bodyFont, minHeight: 60 }}>
           {draft.text || <span style={{ color: MUTED }}>本文なし</span>}
         </p>
@@ -185,31 +190,55 @@ function DraftCard({
 }
 
 /* --------------------------------------------------------- 下書き編集モーダル --------------------------------------------------------- */
+const POST_MODE_OPTIONS = [
+  { id: "post", label: "通常投稿" },
+  { id: "quote", label: "引用リポスト" },
+  { id: "repost", label: "リポスト" },
+] as const;
+
 function DraftEditorModal({
-  open, onClose, onSave, draft, accounts, templates,
+  open, onClose, onSave, draft, accounts, templates, drafts,
 }: {
-  open: boolean; onClose: () => void; onSave: (v: { accountId: string; text: string; mediaUrls: string[] }) => void;
-  draft: Draft | null; accounts: Account[]; templates: Template[];
+  open: boolean; onClose: () => void;
+  onSave: (v: { accountId: string; text: string; mediaUrls: string[]; postMode: PostMode; quoteTargetId: string | null }) => void;
+  draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[];
 }) {
   const [accountId, setAccountId] = useState(draft?.accountId || accounts[0]?.id || "");
   const [text, setText] = useState(draft?.text || "");
   const [mediaUrls, setMediaUrls] = useState<string[]>(draft?.mediaUrls || []);
   const [templateId, setTemplateId] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [postMode, setPostMode] = useState<PostMode>(draft?.postMode || "post");
+  const [quoteTargetId, setQuoteTargetId] = useState(draft?.quoteTargetId || "");
 
   useEffect(() => {
     setAccountId(draft?.accountId || accounts[0]?.id || "");
     setText(draft?.text || "");
     setMediaUrls(draft?.mediaUrls || []);
     setTemplateId("");
+    setPostMode(draft?.postMode || "post");
+    setQuoteTargetId(draft?.quoteTargetId || "");
   }, [draft, open, accounts]);
 
   if (!open) return null;
+
+  const account = accounts.find((a) => a.id === accountId);
+  const repostCandidates = drafts.filter(
+    (d) => d.accountId === accountId && d.status === "posted" && d.postLogs?.[0]?.platformPostId,
+  );
 
   const applyTemplate = (id: string) => {
     setTemplateId(id);
     const t = templates.find((t) => t.id === id);
     if (t) setText(t.body);
+  };
+
+  const selectRepostTarget = (targetId: string) => {
+    setQuoteTargetId(targetId);
+    if (postMode === "repost") {
+      const target = repostCandidates.find((d) => d.postLogs?.[0]?.platformPostId === targetId);
+      if (target) setText(`🔁 リポスト: ${target.text.slice(0, 60)}`);
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,7 +274,38 @@ function DraftEditorModal({
               ))}
             </select>
           </div>
-          {templates.length > 0 && (
+          {account?.platform === "x" && (
+            <div>
+              <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>投稿タイプ</label>
+              <div className="grid grid-cols-3 gap-1 mt-1">
+                {POST_MODE_OPTIONS.map((p) => {
+                  const active = postMode === p.id;
+                  return (
+                    <button key={p.id} onClick={() => setPostMode(p.id)} className="px-2 py-2 rounded text-xs" style={{ background: active ? "rgba(111,214,201,0.15)" : CARD, color: active ? HOLO_A : MUTED, border: `1px solid ${active ? HOLO_A : HAIRLINE}` }}>
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {postMode !== "post" && account?.platform === "x" && (
+            <div>
+              <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>リポスト対象(このアカウントの過去の投稿済み投稿)</label>
+              <select value={quoteTargetId} onChange={(e) => selectRepostTarget(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
+                <option value="">選択してください</option>
+                {repostCandidates.map((d) => (
+                  <option key={d.id} value={d.postLogs?.[0]?.platformPostId ?? ""}>
+                    {formatDateTime(d.postedAt)} — {d.text.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+              {repostCandidates.length === 0 && (
+                <p className="text-[11px] mt-1" style={{ color: MUTED }}>このアカウントには投稿済みの投稿がまだありません。</p>
+              )}
+            </div>
+          )}
+          {templates.length > 0 && postMode !== "repost" && (
             <div>
               <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>テンプレートから作成(任意)</label>
               <select value={templateId} onChange={(e) => applyTemplate(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
@@ -255,8 +315,10 @@ function DraftEditorModal({
             </div>
           )}
           <div>
-            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>本文</label>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="投稿文を入力…" />
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>
+              {postMode === "repost" ? "本文(リポストのため送信されません)" : postMode === "quote" ? "引用コメント" : "本文"}
+            </label>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={postMode === "repost" ? 2 : 6} disabled={postMode === "repost"} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed disabled:opacity-60" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder={postMode === "quote" ? "引用に添えるコメントを入力…" : "投稿文を入力…"} />
             <div className="text-right text-[11px] mt-1" style={{ color: text.length > 280 ? RED : MUTED, fontFamily: monoFont }}>{text.length} / 280</div>
           </div>
           <div>
@@ -285,7 +347,17 @@ function DraftEditorModal({
         </div>
         <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
-          <button onClick={() => { if (text.trim() && accountId) onSave({ accountId, text, mediaUrls }); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>保存する</button>
+          <button
+            onClick={() => {
+              if (!accountId || !text.trim()) return;
+              if (postMode !== "post" && !quoteTargetId) return;
+              onSave({ accountId, text, mediaUrls, postMode, quoteTargetId: postMode === "post" ? null : quoteTargetId });
+            }}
+            className="px-4 py-2 rounded text-sm font-medium"
+            style={{ background: GOLD, color: INK }}
+          >
+            保存する
+          </button>
         </div>
       </div>
     </div>
@@ -608,12 +680,15 @@ export default function App() {
 
   const accountOf = (id: string) => accounts.find((a) => a.id === id);
 
-  const saveDraft = async ({ accountId, text, mediaUrls }: { accountId: string; text: string; mediaUrls: string[] }) => {
+  const saveDraft = async (
+    { accountId, text, mediaUrls, postMode, quoteTargetId }:
+    { accountId: string; text: string; mediaUrls: string[]; postMode: PostMode; quoteTargetId: string | null },
+  ) => {
     if (editingDraft) {
-      const updated = await api.drafts.update(editingDraft.id, { accountId, text, mediaUrls });
+      const updated = await api.drafts.update(editingDraft.id, { accountId, text, mediaUrls, postMode, quoteTargetId });
       setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
     } else {
-      const created = await api.drafts.create({ accountId, text, mediaUrls, source: "manual" });
+      const created = await api.drafts.create({ accountId, text, mediaUrls, source: "manual", postMode, quoteTargetId: quoteTargetId ?? undefined });
       setDrafts((prev) => [created, ...prev]);
     }
     setEditorOpen(false);
@@ -914,7 +989,7 @@ export default function App() {
         </div>
       </div>
 
-      <DraftEditorModal open={editorOpen} draft={editingDraft} accounts={accounts} templates={templates} onClose={() => { setEditorOpen(false); setEditingDraft(null); }} onSave={saveDraft} />
+      <DraftEditorModal open={editorOpen} draft={editingDraft} accounts={accounts} templates={templates} drafts={drafts} onClose={() => { setEditorOpen(false); setEditingDraft(null); }} onSave={saveDraft} />
       <ScheduleModal open={!!scheduleTarget} draft={scheduleTarget} onClose={() => setScheduleTarget(null)} onConfirm={confirmSchedule} />
       <TemplateEditorModal open={templateEditorOpen} template={editingTemplate} onClose={() => { setTemplateEditorOpen(false); setEditingTemplate(null); }} onSave={saveTemplate} />
       <AccountEditorModal open={accountEditorOpen} onClose={() => setAccountEditorOpen(false)} onSave={saveAccount} />

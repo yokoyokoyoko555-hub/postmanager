@@ -13,6 +13,10 @@ router.get("/", async (req, res) => {
       ...(status ? { status: status as never } : {}),
     },
     orderBy: { createdAt: "desc" },
+    include: {
+      // リポスト対象の候補選択用に、投稿成功時のプラットフォーム投稿IDを1件だけ添える
+      postLogs: { where: { status: "success" }, orderBy: { executedAt: "desc" }, take: 1 },
+    },
   });
   res.json(drafts);
 });
@@ -23,6 +27,7 @@ const createDraftSchema = z.object({
   mediaUrls: z.array(z.string().url()).default([]),
   source: z.enum(["manual", "ai"]).default("manual"),
   templateId: z.string().optional(),
+  postMode: z.enum(["post", "quote", "repost"]).default("post"),
   quoteTargetId: z.string().optional(),
 });
 
@@ -42,6 +47,8 @@ const updateDraftSchema = z.object({
   text: z.string().min(1).optional(),
   accountId: z.string().min(1).optional(),
   mediaUrls: z.array(z.string().url()).optional(),
+  postMode: z.enum(["post", "quote", "repost"]).optional(),
+  quoteTargetId: z.string().nullable().optional(),
 });
 
 router.put("/:id", async (req, res) => {

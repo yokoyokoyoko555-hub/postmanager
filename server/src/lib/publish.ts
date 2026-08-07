@@ -7,6 +7,14 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
   if (!account.oauthAccessToken) throw new Error("アカウントが連携されていません");
 
   if (account.platform === "x") {
+    // 無言リポスト: 新規投稿は作らず、過去の投稿をそのまま再共有する
+    if (draft.postMode === "repost") {
+      if (!draft.quoteTargetId) throw new Error("リポスト対象の投稿が指定されていません");
+      if (!account.platformUserId) throw new Error("Xアカウントのユーザー情報が取得できていません(再連携が必要な場合があります)");
+      await x.repost({ accessToken: account.oauthAccessToken, userId: account.platformUserId, tweetId: draft.quoteTargetId });
+      return draft.quoteTargetId;
+    }
+
     const mediaIds: string[] = [];
     for (const url of draft.mediaUrls) {
       const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
@@ -16,7 +24,7 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
       accessToken: account.oauthAccessToken,
       text: draft.text,
       mediaIds,
-      quoteTweetId: draft.quoteTargetId ?? undefined,
+      quoteTweetId: draft.postMode === "quote" ? (draft.quoteTargetId ?? undefined) : undefined,
     });
     return result.id;
   }

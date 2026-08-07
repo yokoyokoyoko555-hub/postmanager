@@ -31,10 +31,15 @@ export const api = {
     remove: (id: string) => request<null>(`/templates/${id}`, { method: "DELETE" }),
   },
   drafts: {
-    list: () => request<Draft[]>("/drafts"),
-    create: (data: { accountId: string; text: string; mediaUrls?: string[]; source?: string; templateId?: string }) =>
-      request<Draft>("/drafts", { method: "POST", body: JSON.stringify(data) }),
-    update: (id: string, data: Partial<{ text: string; accountId: string; mediaUrls: string[] }>) =>
+    list: (params?: { accountId?: string; status?: string }) => {
+      const qs = params ? new URLSearchParams(params as Record<string, string>).toString() : "";
+      return request<Draft[]>(`/drafts${qs ? `?${qs}` : ""}`);
+    },
+    create: (data: {
+      accountId: string; text: string; mediaUrls?: string[]; source?: string; templateId?: string;
+      postMode?: "post" | "quote" | "repost"; quoteTargetId?: string;
+    }) => request<Draft>("/drafts", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<{ text: string; accountId: string; mediaUrls: string[]; postMode: string; quoteTargetId: string | null }>) =>
       request<Draft>(`/drafts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id: string) => request<null>(`/drafts/${id}`, { method: "DELETE" }),
     schedule: (id: string, scheduledAt: string) =>

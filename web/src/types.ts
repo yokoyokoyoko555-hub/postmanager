@@ -1,6 +1,7 @@
 export type Platform = "x" | "instagram";
 export type DraftStatus = "draft" | "scheduled" | "posted" | "failed";
 export type DraftSource = "manual" | "ai";
+export type PostMode = "post" | "quote" | "repost";
 
 export interface Account {
   id: string;
@@ -29,8 +30,11 @@ export interface Draft {
   postedAt: string | null;
   source: DraftSource;
   templateId: string | null;
+  postMode: PostMode;
+  quoteTargetId: string | null;
   lastError: string | null;
   createdAt: string;
+  postLogs?: { platformPostId: string | null }[];
 }
 
 export interface DailyReport {
