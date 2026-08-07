@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3, BookmarkPlus
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, AccountAnalytics, DailyReport, Draft, PostMode, Template } from "./types";
@@ -121,13 +121,15 @@ function FoilFrame({ children, holo = false }: { children: React.ReactNode; holo
 
 /* --------------------------------------------------------- 下書きカード --------------------------------------------------------- */
 function DraftCard({
-  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow,
+  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow, onRepost, onSaveAsTemplate,
 }: {
   draft: Draft; account?: Account;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void;
   onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void; onPostNow: (d: Draft) => void;
+  onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string) => void;
 }) {
   const canPostNow = draft.status !== "posted" && !!account?.connected;
+  const canRepost = draft.status === "posted" && draft.platform === "x" && !!draft.postLogs?.[0]?.platformPostId;
   return (
     <FoilFrame holo={draft.source === "ai"}>
       <div className="p-4 flex flex-col gap-3 h-full">
@@ -176,6 +178,14 @@ function DraftCard({
             <button onClick={() => onEdit(draft)} title="編集" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
               <Pencil size={15} />
             </button>
+            {canRepost && (
+              <button onClick={() => onRepost(draft)} title="この投稿をリポストする下書きを作成" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: HOLO_A }}>
+                <Repeat size={15} />
+              </button>
+            )}
+            <button onClick={() => onSaveAsTemplate(draft.text)} title="本文をテンプレートとして保存" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
+              <BookmarkPlus size={15} />
+            </button>
             <button onClick={() => onTogglePosted(draft)} title="投稿済みにする(記録用)" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: draft.status === "posted" ? GREEN : MUTED }}>
               <Check size={15} />
             </button>
@@ -197,14 +207,15 @@ const POST_MODE_OPTIONS = [
 ] as const;
 
 function DraftEditorModal({
-  open, onClose, onSave, draft, accounts, templates, drafts,
+  open, onClose, onSave, draft, accounts, templates, drafts, initialText, onSaveAsTemplate,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: { accountId: string; text: string; mediaUrls: string[]; postMode: PostMode; quoteTargetId: string | null }) => void;
-  draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[];
+  draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[]; initialText?: string;
+  onSaveAsTemplate: (text: string) => void;
 }) {
   const [accountId, setAccountId] = useState(draft?.accountId || accounts[0]?.id || "");
-  const [text, setText] = useState(draft?.text || "");
+  const [text, setText] = useState(draft?.text || initialText || "");
   const [mediaUrls, setMediaUrls] = useState<string[]>(draft?.mediaUrls || []);
   const [templateId, setTemplateId] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -213,12 +224,12 @@ function DraftEditorModal({
 
   useEffect(() => {
     setAccountId(draft?.accountId || accounts[0]?.id || "");
-    setText(draft?.text || "");
+    setText(draft?.text || initialText || "");
     setMediaUrls(draft?.mediaUrls || []);
     setTemplateId("");
     setPostMode(draft?.postMode || "post");
     setQuoteTargetId(draft?.quoteTargetId || "");
-  }, [draft, open, accounts]);
+  }, [draft, open, accounts, initialText]);
 
   if (!open) return null;
 
@@ -319,7 +330,14 @@ function DraftEditorModal({
               {postMode === "repost" ? "本文(リポストのため送信されません)" : postMode === "quote" ? "引用コメント" : "本文"}
             </label>
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={postMode === "repost" ? 2 : 6} disabled={postMode === "repost"} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed disabled:opacity-60" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder={postMode === "quote" ? "引用に添えるコメントを入力…" : "投稿文を入力…"} />
-            <div className="text-right text-[11px] mt-1" style={{ color: text.length > 280 ? RED : MUTED, fontFamily: monoFont }}>{text.length} / 280</div>
+            <div className="flex items-center justify-between mt-1">
+              {postMode !== "repost" ? (
+                <button onClick={() => onSaveAsTemplate(text)} disabled={!text.trim()} className="flex items-center gap-1 text-[11px] disabled:opacity-40" style={{ color: HOLO_A, fontFamily: monoFont }}>
+                  <BookmarkPlus size={12} /> テンプレートとして保存
+                </button>
+              ) : <span />}
+              <span className="text-[11px]" style={{ color: text.length > 280 ? RED : MUTED, fontFamily: monoFont }}>{text.length} / 280</span>
+            </div>
           </div>
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像(任意、Instagramは1枚必須)</label>
@@ -636,6 +654,7 @@ export default function App() {
   const [accountAnalytics, setAccountAnalytics] = useState<AccountAnalytics | null>(null);
   const [reportsPage, setReportsPage] = useState(0);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+  const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
 
   const reloadAll = async () => {
     try {
@@ -714,6 +733,7 @@ export default function App() {
     }
     setEditorOpen(false);
     setEditingDraft(null);
+    setDraftInitialText(undefined);
   };
 
   const deleteDraft = async (draft: Draft) => {
@@ -742,6 +762,24 @@ export default function App() {
     }
   };
 
+  const repostDraft = async (draft: Draft) => {
+    const targetId = draft.postLogs?.[0]?.platformPostId;
+    if (!targetId) {
+      alert("リポスト対象の投稿IDが見つかりませんでした");
+      return;
+    }
+    const created = await api.drafts.create({
+      accountId: draft.accountId,
+      text: `🔁 リポスト: ${draft.text.slice(0, 60)}`,
+      source: "manual",
+      postMode: "repost",
+      quoteTargetId: targetId,
+    });
+    setDrafts((prev) => [created, ...prev]);
+    setTab("drafts");
+    alert("下書きに追加しました。「予約」または「今すぐ投稿」から実行できます。");
+  };
+
   const confirmSchedule = async (iso: string) => {
     if (!scheduleTarget) return;
     const updated = await api.drafts.schedule(scheduleTarget.id, iso);
@@ -764,6 +802,21 @@ export default function App() {
   const deleteTemplate = async (t: Template) => {
     await api.templates.remove(t.id);
     setTemplates((prev) => prev.filter((x) => x.id !== t.id));
+  };
+
+  const saveTextAsTemplate = async (body: string) => {
+    if (!body.trim()) return;
+    const title = window.prompt("テンプレート名を入力してください");
+    if (!title) return;
+    const created = await api.templates.create({ title, body });
+    setTemplates((prev) => [created, ...prev]);
+    alert("テンプレートに保存しました");
+  };
+
+  const createDraftFromTemplate = (template: Template) => {
+    setEditingDraft(null);
+    setDraftInitialText(template.body);
+    setEditorOpen(true);
   };
 
   const saveAccount = async (v: { platform: "x" | "instagram"; displayName: string; handle: string }) => {
@@ -1012,6 +1065,14 @@ export default function App() {
                         <span className="text-sm font-medium" style={{ color: PAPER, fontFamily: displayFont }}>{t.title}</span>
                       </div>
                       <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{t.body}</p>
+                      <button
+                        onClick={() => createDraftFromTemplate(t)}
+                        disabled={accounts.length === 0}
+                        className="flex items-center justify-center gap-1.5 py-2 rounded text-xs font-medium disabled:opacity-40"
+                        style={{ background: GOLD, color: INK }}
+                      >
+                        <FileText size={13} /> この内容で下書き作成
+                      </button>
                       <div className="flex justify-end gap-1 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
                         <button onClick={() => { setEditingTemplate(t); setTemplateEditorOpen(true); }} className="p-1.5 rounded" style={{ color: MUTED }}><Pencil size={14} /></button>
                         <button onClick={() => deleteTemplate(t)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
@@ -1065,14 +1126,35 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {visibleDrafts.map((d) => (
-                <DraftCard key={d.id} draft={d} account={accountOf(d.accountId)} onEdit={(dd) => { setEditingDraft(dd); setEditorOpen(true); }} onDelete={deleteDraft} onSchedule={(dd) => setScheduleTarget(dd)} onTogglePosted={togglePosted} onPostNow={postNow} />
+                <DraftCard
+                  key={d.id}
+                  draft={d}
+                  account={accountOf(d.accountId)}
+                  onEdit={(dd) => { setEditingDraft(dd); setEditorOpen(true); }}
+                  onDelete={deleteDraft}
+                  onSchedule={(dd) => setScheduleTarget(dd)}
+                  onTogglePosted={togglePosted}
+                  onPostNow={postNow}
+                  onRepost={repostDraft}
+                  onSaveAsTemplate={saveTextAsTemplate}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
 
-      <DraftEditorModal open={editorOpen} draft={editingDraft} accounts={accounts} templates={templates} drafts={drafts} onClose={() => { setEditorOpen(false); setEditingDraft(null); }} onSave={saveDraft} />
+      <DraftEditorModal
+        open={editorOpen}
+        draft={editingDraft}
+        accounts={accounts}
+        templates={templates}
+        drafts={drafts}
+        initialText={draftInitialText}
+        onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); }}
+        onSave={saveDraft}
+        onSaveAsTemplate={saveTextAsTemplate}
+      />
       <ScheduleModal open={!!scheduleTarget} draft={scheduleTarget} onClose={() => setScheduleTarget(null)} onConfirm={confirmSchedule} />
       <TemplateEditorModal open={templateEditorOpen} template={editingTemplate} onClose={() => { setTemplateEditorOpen(false); setEditingTemplate(null); }} onSave={saveTemplate} />
       <AccountEditorModal open={accountEditorOpen} onClose={() => setAccountEditorOpen(false)} onSave={saveAccount} />
