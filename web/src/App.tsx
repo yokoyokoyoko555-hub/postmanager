@@ -67,6 +67,22 @@ function jstLocalInputToIso(localValue: string): string {
   return new Date(`${localValue}:00+09:00`).toISOString();
 }
 
+// 閲覧端末のタイムゾーンに関わらず、日本時間での年/月/日/時/分を取得する
+function nowJstParts() {
+  const shifted = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+  };
+}
+
+function daysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
 /* --------------------------------------------------------- 汎用パーツ --------------------------------------------------------- */
 function StatusPill({ status, scheduledAt, postedAt }: { status: Draft["status"]; scheduledAt: string | null; postedAt?: string | null }) {
   const map: Record<Draft["status"], { label: string; color: string; bg: string }> = {
@@ -277,19 +293,62 @@ function DraftEditorModal({
 }
 
 /* --------------------------------------------------------- 予約日時モーダル --------------------------------------------------------- */
+function ScheduleSelect({ value, onChange, options, label }: { value: number; onChange: (v: number) => void; options: { value: number; label: string }[]; label: string }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <label className="text-[10px] block mb-1" style={{ color: MUTED, fontFamily: monoFont }}>{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full rounded px-2 py-2 text-sm"
+        style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}
+      >
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function ScheduleModal({ open, onClose, onConfirm, draft }: { open: boolean; onClose: () => void; onConfirm: (iso: string) => void; draft: Draft | null }) {
-  const [dt, setDt] = useState("");
-  useEffect(() => { setDt(""); }, [draft, open]);
+  const defaults = nowJstParts();
+  const [year, setYear] = useState(defaults.year);
+  const [month, setMonth] = useState(defaults.month);
+  const [day, setDay] = useState(defaults.day);
+  const [hour, setHour] = useState(defaults.hour);
+  const [minute, setMinute] = useState(defaults.minute);
+
+  useEffect(() => {
+    if (open) {
+      const d = nowJstParts();
+      setYear(d.year); setMonth(d.month); setDay(d.day); setHour(d.hour); setMinute(d.minute);
+    }
+  }, [draft, open]);
+
+  const maxDay = daysInMonth(year, month);
+  useEffect(() => { if (day > maxDay) setDay(maxDay); }, [maxDay, day]);
+
   if (!open) return null;
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const localValue = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
       <div className="w-full max-w-sm rounded-xl p-5" style={{ background: PANEL, border: `1px solid ${HAIRLINE}` }}>
         <h3 style={{ fontFamily: displayFont, color: PAPER }} className="text-base uppercase mb-1">投稿予約日時</h3>
-        <p className="text-xs mb-3" style={{ color: MUTED, fontFamily: monoFont }}>日本時間(JST)で入力してください</p>
-        <input type="datetime-local" value={dt} onChange={(e) => setDt(e.target.value)} className="w-full rounded px-3 py-2 text-sm mb-4" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }} />
+        <p className="text-xs mb-3" style={{ color: MUTED, fontFamily: monoFont }}>日本時間(JST)で選択してください</p>
+        <div className="flex gap-2 mb-2">
+          <ScheduleSelect label="年" value={year} onChange={setYear} options={[0, 1, 2].map((n) => ({ value: defaults.year + n, label: `${defaults.year + n}年` }))} />
+          <ScheduleSelect label="月" value={month} onChange={setMonth} options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` }))} />
+          <ScheduleSelect label="日" value={day} onChange={setDay} options={Array.from({ length: maxDay }, (_, i) => ({ value: i + 1, label: `${i + 1}日` }))} />
+        </div>
+        <div className="flex gap-2 mb-4">
+          <ScheduleSelect label="時" value={hour} onChange={setHour} options={Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${pad(i)}時` }))} />
+          <ScheduleSelect label="分" value={minute} onChange={setMinute} options={Array.from({ length: 60 }, (_, i) => ({ value: i, label: `${pad(i)}分` }))} />
+        </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
-          <button onClick={() => { if (dt) onConfirm(jstLocalInputToIso(dt)); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>予約する</button>
+          <button onClick={() => onConfirm(jstLocalInputToIso(localValue))} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>予約する</button>
         </div>
       </div>
     </div>
