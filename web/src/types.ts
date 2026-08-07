@@ -17,6 +17,7 @@ export interface Template {
   id: string;
   title: string;
   body: string;
+  mediaUrls: string[];
   accountId: string | null;
   createdAt: string;
 }

@@ -19,6 +19,7 @@ const templateSchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
   accountId: z.string().nullable().optional(),
+  mediaUrls: z.array(z.string().url()).default([]),
 });
 
 router.post("/", async (req, res) => {

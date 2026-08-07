@@ -57,6 +57,7 @@ model Template {
   id        String   @id @default(cuid())
   title     String
   body      String
+  mediaUrls String[] @default([])
   // nullなら「共通」テンプレート(全アカウントに表示)、指定があればそのアカウント専用
   accountId String?
   account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)

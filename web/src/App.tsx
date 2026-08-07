@@ -126,7 +126,7 @@ function DraftCard({
   draft: Draft; account?: Account;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void;
   onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void; onPostNow: (d: Draft) => void;
-  onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string) => void;
+  onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
 }) {
   const canPostNow = draft.status !== "posted" && !!account?.connected;
   const canRepost = draft.status === "posted" && draft.platform === "x" && !!draft.postLogs?.[0]?.platformPostId;
@@ -183,7 +183,7 @@ function DraftCard({
                 <Repeat size={15} />
               </button>
             )}
-            <button onClick={() => onSaveAsTemplate(draft.text)} title="本文をテンプレートとして保存" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
+            <button onClick={() => onSaveAsTemplate(draft.text, draft.mediaUrls)} title="本文をテンプレートとして保存" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
               <BookmarkPlus size={15} />
             </button>
             <button onClick={() => onTogglePosted(draft)} title="投稿済みにする(記録用)" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: draft.status === "posted" ? GREEN : MUTED }}>
@@ -207,16 +207,16 @@ const POST_MODE_OPTIONS = [
 ] as const;
 
 function DraftEditorModal({
-  open, onClose, onSave, draft, accounts, templates, drafts, initialText, onSaveAsTemplate,
+  open, onClose, onSave, draft, accounts, templates, drafts, initialText, initialMediaUrls, onSaveAsTemplate,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: { accountId: string; text: string; mediaUrls: string[]; postMode: PostMode; quoteTargetId: string | null }) => void;
-  draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[]; initialText?: string;
-  onSaveAsTemplate: (text: string) => void;
+  draft: Draft | null; accounts: Account[]; templates: Template[]; drafts: Draft[]; initialText?: string; initialMediaUrls?: string[];
+  onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
 }) {
   const [accountId, setAccountId] = useState(draft?.accountId || accounts[0]?.id || "");
   const [text, setText] = useState(draft?.text || initialText || "");
-  const [mediaUrls, setMediaUrls] = useState<string[]>(draft?.mediaUrls || []);
+  const [mediaUrls, setMediaUrls] = useState<string[]>(draft?.mediaUrls || initialMediaUrls || []);
   const [templateId, setTemplateId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [postMode, setPostMode] = useState<PostMode>(draft?.postMode || "post");
@@ -225,11 +225,11 @@ function DraftEditorModal({
   useEffect(() => {
     setAccountId(draft?.accountId || accounts[0]?.id || "");
     setText(draft?.text || initialText || "");
-    setMediaUrls(draft?.mediaUrls || []);
+    setMediaUrls(draft?.mediaUrls || initialMediaUrls || []);
     setTemplateId("");
     setPostMode(draft?.postMode || "post");
     setQuoteTargetId(draft?.quoteTargetId || "");
-  }, [draft, open, accounts, initialText]);
+  }, [draft, open, accounts, initialText, initialMediaUrls]);
 
   if (!open) return null;
 
@@ -241,7 +241,10 @@ function DraftEditorModal({
   const applyTemplate = (id: string) => {
     setTemplateId(id);
     const t = templates.find((t) => t.id === id);
-    if (t) setText(t.body);
+    if (t) {
+      setText(t.body);
+      setMediaUrls(t.mediaUrls);
+    }
   };
 
   const templatesForAccount = templates.filter((t) => t.accountId === null || t.accountId === accountId);
@@ -334,7 +337,7 @@ function DraftEditorModal({
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={postMode === "repost" ? 2 : 6} disabled={postMode === "repost"} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed disabled:opacity-60" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder={postMode === "quote" ? "引用に添えるコメントを入力…" : "投稿文を入力…"} />
             <div className="flex items-center justify-between mt-1">
               {postMode !== "repost" ? (
-                <button onClick={() => onSaveAsTemplate(text)} disabled={!text.trim()} className="flex items-center gap-1 text-[11px] disabled:opacity-40" style={{ color: HOLO_A, fontFamily: monoFont }}>
+                <button onClick={() => onSaveAsTemplate(text, mediaUrls)} disabled={!text.trim()} className="flex items-center gap-1 text-[11px] disabled:opacity-40" style={{ color: HOLO_A, fontFamily: monoFont }}>
                   <BookmarkPlus size={12} /> テンプレートとして保存
                 </button>
               ) : <span />}
@@ -452,18 +455,36 @@ function TemplateEditorModal({
   open, onClose, onSave, template, accounts, defaultAccountId,
 }: {
   open: boolean; onClose: () => void;
-  onSave: (v: { title: string; body: string; accountId: string | null }) => void;
+  onSave: (v: { title: string; body: string; accountId: string | null; mediaUrls: string[] }) => void;
   template: Template | null; accounts: Account[]; defaultAccountId: string | null;
 }) {
   const [title, setTitle] = useState(template?.title || "");
   const [body, setBody] = useState(template?.body || "");
   const [accountId, setAccountId] = useState<string | null>(template ? template.accountId : defaultAccountId);
+  const [mediaUrls, setMediaUrls] = useState<string[]>(template?.mediaUrls || []);
+  const [uploading, setUploading] = useState(false);
   useEffect(() => {
     setTitle(template?.title || "");
     setBody(template?.body || "");
     setAccountId(template ? template.accountId : defaultAccountId);
+    setMediaUrls(template?.mediaUrls || []);
   }, [template, open, defaultAccountId]);
   if (!open) return null;
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadImageToS3(file);
+      setMediaUrls((prev) => [...prev, url]);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
       <div className="w-full max-w-lg rounded-xl max-h-[90vh] overflow-y-auto" style={{ background: PANEL, border: `1px solid ${HAIRLINE}` }}>
@@ -489,10 +510,33 @@ function TemplateEditorModal({
             </label>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} />
           </div>
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像(任意)</label>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {mediaUrls.map((url) => (
+                <div key={url} className="relative">
+                  <img src={url} alt="" className="w-16 h-16 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                  <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                <span className="text-[9px]">ライブラリ</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} disabled={uploading} />
+              </label>
+              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                <span className="text-[9px]">カメラ</span>
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} disabled={uploading} />
+              </label>
+            </div>
+          </div>
         </div>
         <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
-          <button onClick={() => { if (title.trim() && body.trim()) onSave({ title, body, accountId }); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>保存する</button>
+          <button onClick={() => { if (title.trim() && body.trim()) onSave({ title, body, accountId, mediaUrls }); }} className="px-4 py-2 rounded text-sm font-medium" style={{ background: GOLD, color: INK }}>保存する</button>
         </div>
       </div>
     </div>
@@ -675,6 +719,7 @@ export default function App() {
   const [reportsPage, setReportsPage] = useState(0);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
+  const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
 
   const reloadAll = async () => {
     try {
@@ -754,6 +799,7 @@ export default function App() {
     setEditorOpen(false);
     setEditingDraft(null);
     setDraftInitialText(undefined);
+    setDraftInitialMediaUrls(undefined);
   };
 
   const deleteDraft = async (draft: Draft) => {
@@ -807,12 +853,12 @@ export default function App() {
     setScheduleTarget(null);
   };
 
-  const saveTemplate = async ({ title, body, accountId }: { title: string; body: string; accountId: string | null }) => {
+  const saveTemplate = async ({ title, body, accountId, mediaUrls }: { title: string; body: string; accountId: string | null; mediaUrls: string[] }) => {
     if (editingTemplate) {
-      const updated = await api.templates.update(editingTemplate.id, { title, body, accountId });
+      const updated = await api.templates.update(editingTemplate.id, { title, body, accountId, mediaUrls });
       setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
     } else {
-      const created = await api.templates.create({ title, body, accountId });
+      const created = await api.templates.create({ title, body, accountId, mediaUrls });
       setTemplates((prev) => [created, ...prev]);
     }
     setTemplateEditorOpen(false);
@@ -824,11 +870,11 @@ export default function App() {
     setTemplates((prev) => prev.filter((x) => x.id !== t.id));
   };
 
-  const saveTextAsTemplate = async (body: string, accountId: string | null = null) => {
+  const saveTextAsTemplate = async (body: string, mediaUrls: string[] = [], accountId: string | null = null) => {
     if (!body.trim()) return;
     const title = window.prompt("テンプレート名を入力してください");
     if (!title) return;
-    const created = await api.templates.create({ title, body, accountId });
+    const created = await api.templates.create({ title, body, accountId, mediaUrls });
     setTemplates((prev) => [created, ...prev]);
     alert("テンプレートに保存しました");
   };
@@ -836,6 +882,7 @@ export default function App() {
   const createDraftFromTemplate = (template: Template) => {
     setEditingDraft(null);
     setDraftInitialText(template.body);
+    setDraftInitialMediaUrls(template.mediaUrls);
     setEditorOpen(true);
   };
 
@@ -1107,6 +1154,13 @@ export default function App() {
                       </span>
                     </div>
                     <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{t.body}</p>
+                    {t.mediaUrls.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {t.mediaUrls.map((url) => (
+                          <img key={url} src={url} alt="" className="w-12 h-12 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                        ))}
+                      </div>
+                    )}
                     <button
                       onClick={() => createDraftFromTemplate(t)}
                       disabled={accounts.length === 0}
@@ -1219,7 +1273,8 @@ export default function App() {
         templates={templates}
         drafts={drafts}
         initialText={draftInitialText}
-        onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); }}
+        initialMediaUrls={draftInitialMediaUrls}
+        onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); setDraftInitialMediaUrls(undefined); }}
         onSave={saveDraft}
         onSaveAsTemplate={saveTextAsTemplate}
       />
