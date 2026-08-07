@@ -5,7 +5,7 @@ const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const API_BASE = "https://api.twitter.com/2";
 const MEDIA_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json";
 
-const SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
+const SCOPES = ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].join(" ");
 
 export function generatePkcePair() {
   const codeVerifier = crypto.randomBytes(32).toString("base64url");
