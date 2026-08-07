@@ -23,7 +23,7 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
     const mediaIds: string[] = [];
     for (const url of draft.mediaUrls) {
       const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
-      mediaIds.push(await x.uploadMedia(accessToken, buf, "image/jpeg"));
+      mediaIds.push(await x.uploadMedia(accessToken, buf, x.guessMimeType(url)));
     }
     const result = await x.postTweet({
       accessToken,

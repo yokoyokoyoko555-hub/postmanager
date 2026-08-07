@@ -94,12 +94,28 @@ export async function uploadMedia(accessToken: string, imageBuffer: Buffer, mime
   form.append("media", new Blob([new Uint8Array(imageBuffer)], { type: mimeType }));
   const res = await fetch(MEDIA_UPLOAD_URL, {
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      // User-Agent不在だとCloudflare/X側のWAFに本文なし403で弾かれることがあるため明示的に付与
+      "User-Agent": "PostBinderApp/1.0",
+    },
     body: form,
   });
   if (!res.ok) throw new Error(`X media upload failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as { media_id_string: string };
   return data.media_id_string;
+}
+
+export function guessMimeType(url: string): string {
+  const ext = url.split(".").pop()?.toLowerCase().split(/[?#]/)[0];
+  switch (ext) {
+    case "png": return "image/png";
+    case "gif": return "image/gif";
+    case "webp": return "image/webp";
+    case "jpg":
+    case "jpeg":
+    default: return "image/jpeg";
+  }
 }
 
 export async function postTweet(params: {
