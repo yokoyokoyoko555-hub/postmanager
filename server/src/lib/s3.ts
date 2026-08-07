@@ -8,7 +8,13 @@ function s3Client() {
   if (!client) {
     const region = process.env.AWS_REGION;
     if (!region) throw new Error("AWS_REGION is not configured");
-    client = new S3Client({ region });
+    // Cloudflare R2 / Backblaze B2 等のS3互換サービスを使う場合はS3_ENDPOINTを設定する。
+    // 未設定なら通常のAWS S3として動作する。
+    const endpoint = process.env.S3_ENDPOINT;
+    client = new S3Client({
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+    });
   }
   return client;
 }
@@ -22,11 +28,12 @@ export async function createPresignedUpload(params: { fileName: string; contentT
   const ext = params.fileName.includes(".") ? params.fileName.split(".").pop() : "jpg";
   const key = `drafts/${crypto.randomUUID()}.${ext}`;
 
+  // 2023年4月以降に作成されたS3バケットはデフォルトでACLが無効化されているため、
+  // オブジェクト単位のACL指定はしない。公開読み取りはバケットポリシーで許可する運用にする。
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,
     ContentType: params.contentType,
-    ACL: "public-read",
   });
   const uploadUrl = await getSignedUrl(s3Client(), command, { expiresIn: 300 });
   const publicUrl = `${publicBase.replace(/\/$/, "")}/${key}`;
