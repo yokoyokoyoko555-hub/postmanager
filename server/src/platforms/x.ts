@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
 const TOKEN_URL = "https://api.twitter.com/2/oauth2/token";
 const API_BASE = "https://api.twitter.com/2";
-const MEDIA_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json";
+const MEDIA_UPLOAD_URL = "https://upload.x.com/1.1/media/upload.json";
 
 const SCOPES = ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].join(" ");
 
@@ -96,8 +96,11 @@ export async function uploadMedia(accessToken: string, imageBuffer: Buffer, mime
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      // User-Agent不在だとCloudflare/X側のWAFに本文なし403で弾かれることがあるため明示的に付与
-      "User-Agent": "PostBinderApp/1.0",
+      // Cloudflareのボット対策(本文なし403)を避けるため、ブラウザに近いヘッダーを明示的に付与
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept: "*/*",
+      "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
     },
     body: form,
   });
