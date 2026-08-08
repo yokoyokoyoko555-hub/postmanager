@@ -199,6 +199,73 @@ function DraftCard({
   );
 }
 
+/* --------------------------------------------------------- 投稿履歴(蛇腹表示) --------------------------------------------------------- */
+function PostedAccordionItem({
+  draft, account, open, onToggle, onEdit, onDelete, onTogglePosted, onRepost, onSaveAsTemplate,
+}: {
+  draft: Draft; account?: Account; open: boolean; onToggle: () => void;
+  onEdit: (d: Draft) => void; onDelete: (d: Draft) => void; onTogglePosted: (d: Draft) => void;
+  onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
+}) {
+  const canRepost = draft.platform === "x" && !!draft.postLogs?.[0]?.platformPostId;
+  const time = draft.postedAt
+    ? new Date(draft.postedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: JST_TIMEZONE })
+    : "";
+  return (
+    <FoilFrame>
+      <button onClick={onToggle} className="w-full flex items-center gap-2 p-2.5 text-left min-w-0">
+        <span style={{ fontFamily: monoFont, fontSize: 10, color: MUTED }} className="shrink-0">{time}</span>
+        <span style={{ fontFamily: monoFont, fontSize: 10, color: MUTED }} className="shrink-0 truncate max-w-[30%]">{account?.handle ?? "未割当"}</span>
+        <span className="truncate flex-1 text-xs" style={{ color: PAPER }}>
+          {draft.text || <span style={{ color: MUTED }}>本文なし</span>}
+        </span>
+        <ChevronDown size={13} className="shrink-0" style={{ color: MUTED, transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }} />
+      </button>
+      {open && (
+        <div className="px-2.5 pb-2.5 flex flex-col gap-2">
+          {draft.postMode !== "post" && (
+            <span className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded text-[10px]" style={{ color: HOLO_A, background: "rgba(111,214,201,0.12)", fontFamily: monoFont }}>
+              <Repeat size={10} /> {draft.postMode === "repost" ? "リポスト" : "引用リポスト"}
+            </span>
+          )}
+          <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: PAPER, fontFamily: bodyFont }}>
+            {draft.text || <span style={{ color: MUTED }}>本文なし</span>}
+          </p>
+          {draft.mediaUrls.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {draft.mediaUrls.map((url) => (
+                <img key={url} src={url} alt="" className="w-12 h-12 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between pt-1.5" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+            <span style={{ fontFamily: monoFont, fontSize: 10, color: MUTED }}>No. {draft.id.slice(-6).toUpperCase()}</span>
+            <div className="flex items-center gap-0.5">
+              <button onClick={() => onEdit(draft)} title="編集" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
+                <Pencil size={14} />
+              </button>
+              {canRepost && (
+                <button onClick={() => onRepost(draft)} title="この投稿をリポストする下書きを作成" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: HOLO_A }}>
+                  <Repeat size={14} />
+                </button>
+              )}
+              <button onClick={() => onSaveAsTemplate(draft.text, draft.mediaUrls)} title="本文をテンプレートとして保存" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
+                <BookmarkPlus size={14} />
+              </button>
+              <button onClick={() => onTogglePosted(draft)} title="投稿済みを解除" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: GREEN }}>
+                <Check size={14} />
+              </button>
+              <button onClick={() => onDelete(draft)} title="削除" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: RED }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </FoilFrame>
+  );
+}
+
 /* --------------------------------------------------------- 下書き編集モーダル --------------------------------------------------------- */
 const POST_MODE_OPTIONS = [
   { id: "post", label: "通常投稿" },
@@ -423,6 +490,21 @@ function ScheduleModal({ open, onClose, onConfirm, draft }: { open: boolean; onC
   const maxDay = daysInMonth(year, month);
   useEffect(() => { if (day > maxDay) setDay(maxDay); }, [maxDay, day]);
 
+  // 現在時刻(JST、モーダルを開いた時点)より前の日時は選べないようにする
+  const isCurrentYear = year === defaults.year;
+  const minMonth = isCurrentYear ? defaults.month : 1;
+  const isCurrentYearMonth = isCurrentYear && month === defaults.month;
+  const minDay = isCurrentYearMonth ? defaults.day : 1;
+  const isCurrentDate = isCurrentYearMonth && day === defaults.day;
+  const minHour = isCurrentDate ? defaults.hour : 0;
+  const isCurrentHour = isCurrentDate && hour === defaults.hour;
+  const minMinute = isCurrentHour ? defaults.minute : 0;
+
+  useEffect(() => { if (month < minMonth) setMonth(minMonth); }, [minMonth, month]);
+  useEffect(() => { if (day < minDay) setDay(minDay); }, [minDay, day]);
+  useEffect(() => { if (hour < minHour) setHour(minHour); }, [minHour, hour]);
+  useEffect(() => { if (minute < minMinute) setMinute(minMinute); }, [minMinute, minute]);
+
   if (!open) return null;
 
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -432,15 +514,15 @@ function ScheduleModal({ open, onClose, onConfirm, draft }: { open: boolean; onC
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
       <div className="w-full max-w-sm rounded-xl p-5" style={{ background: PANEL, border: `1px solid ${HAIRLINE}` }}>
         <h3 style={{ fontFamily: displayFont, color: PAPER }} className="text-base uppercase mb-1">投稿予約日時</h3>
-        <p className="text-xs mb-3" style={{ color: MUTED, fontFamily: monoFont }}>日本時間(JST)で選択してください</p>
+        <p className="text-xs mb-3" style={{ color: MUTED, fontFamily: monoFont }}>日本時間(JST)で選択してください(現在時刻以降のみ)</p>
         <div className="flex gap-2 mb-2">
           <ScheduleSelect label="年" value={year} onChange={setYear} options={[0, 1, 2].map((n) => ({ value: defaults.year + n, label: `${defaults.year + n}年` }))} />
-          <ScheduleSelect label="月" value={month} onChange={setMonth} options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` }))} />
-          <ScheduleSelect label="日" value={day} onChange={setDay} options={Array.from({ length: maxDay }, (_, i) => ({ value: i + 1, label: `${i + 1}日` }))} />
+          <ScheduleSelect label="月" value={month} onChange={setMonth} options={Array.from({ length: 12 - minMonth + 1 }, (_, i) => ({ value: minMonth + i, label: `${minMonth + i}月` }))} />
+          <ScheduleSelect label="日" value={day} onChange={setDay} options={Array.from({ length: maxDay - minDay + 1 }, (_, i) => ({ value: minDay + i, label: `${minDay + i}日` }))} />
         </div>
         <div className="flex gap-2 mb-4">
-          <ScheduleSelect label="時" value={hour} onChange={setHour} options={Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${pad(i)}時` }))} />
-          <ScheduleSelect label="分" value={minute} onChange={setMinute} options={Array.from({ length: 60 }, (_, i) => ({ value: i, label: `${pad(i)}分` }))} />
+          <ScheduleSelect label="時" value={hour} onChange={setHour} options={Array.from({ length: 24 - minHour }, (_, i) => ({ value: minHour + i, label: `${pad(minHour + i)}時` }))} />
+          <ScheduleSelect label="分" value={minute} onChange={setMinute} options={Array.from({ length: 60 - minMinute }, (_, i) => ({ value: minMinute + i, label: `${pad(minMinute + i)}分` }))} />
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
@@ -719,6 +801,7 @@ export default function App() {
   const [accountAnalytics, setAccountAnalytics] = useState<AccountAnalytics | null>(null);
   const [reportsPage, setReportsPage] = useState(0);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
+  const [expandedPostedId, setExpandedPostedId] = useState<string | null>(null);
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
   const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
 
@@ -1241,10 +1324,61 @@ export default function App() {
                 ))}
               </div>
             )
+          ) : tab === "posted" ? (
+            visibleDrafts.length === 0 ? (
+              <EmptyState text="投稿済みの投稿はまだありません。「今すぐ投稿」や予約投稿が実行されるとここに履歴が残ります。" />
+            ) : (() => {
+              const dayColumns = [
+                { offset: 0, label: "本日" },
+                { offset: 1, label: "昨日" },
+                { offset: 2, label: "一昨日" },
+              ].map(({ offset, label }) => {
+                const d = new Date(Date.now() - offset * 24 * 60 * 60 * 1000);
+                const key = d.toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE });
+                const dateLabel = d.toLocaleDateString("ja-JP", { month: "2-digit", day: "2-digit", timeZone: JST_TIMEZONE });
+                return { key, label, dateLabel };
+              });
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {dayColumns.map((col) => {
+                    const items = visibleDrafts.filter(
+                      (d) => d.postedAt && new Date(d.postedAt).toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE }) === col.key,
+                    );
+                    return (
+                      <div key={col.key} className="flex flex-col gap-2 min-w-0">
+                        <div className="text-xs uppercase tracking-wide flex items-center gap-1.5" style={{ color: MUTED, fontFamily: monoFont }}>
+                          {col.label} <span style={{ color: HAIRLINE }}>|</span> {col.dateLabel}
+                        </div>
+                        {items.length === 0 ? (
+                          <p className="text-xs" style={{ color: MUTED }}>投稿なし</p>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {items.map((d) => (
+                              <PostedAccordionItem
+                                key={d.id}
+                                draft={d}
+                                account={accountOf(d.accountId)}
+                                open={expandedPostedId === d.id}
+                                onToggle={() => setExpandedPostedId((prev) => (prev === d.id ? null : d.id))}
+                                onEdit={(dd) => { setEditingDraft(dd); setEditorOpen(true); }}
+                                onDelete={deleteDraft}
+                                onTogglePosted={togglePosted}
+                                onRepost={repostDraft}
+                                onSaveAsTemplate={saveTextAsTemplate}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
           ) : visibleDrafts.length === 0 ? (
             <EmptyState text={
               tab === "scheduled" ? "予約中の投稿はありません。下書きから時計アイコンで日時を設定できます。"
-                : tab === "posted" ? "投稿済みの投稿はまだありません。「今すぐ投稿」や予約投稿が実行されるとここに履歴が残ります。"
                 : tab === "failed" ? "失敗した投稿はありません。"
                 : accounts.length === 0 ? "先に「アカウント」タブでアカウントを登録してください。"
                 : "下書きはまだありません。右上の「新規下書き」か「AI生成」から作成しましょう。"
