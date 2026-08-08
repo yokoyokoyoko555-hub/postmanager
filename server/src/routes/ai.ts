@@ -80,6 +80,7 @@ router.post("/daily-report", async (req, res) => {
     const errors = results.filter((r) => !r.ok).map((r) => ({ accountId: r.accountId, error: r.error }));
     res.json({ reports, errors });
   } catch (e) {
+    console.error("[ai] daily-report failed", e);
     res.status(502).json({ error: "レポート生成に失敗しました", detail: (e as Error).message });
   }
 });

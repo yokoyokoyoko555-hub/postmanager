@@ -767,8 +767,8 @@ export default function App() {
       if (activeAccountId !== "all") {
         api.metrics.get(activeAccountId).then(setAccountAnalytics).catch(() => {});
       }
-    } catch {
-      setReportError("レポート生成に失敗しました。もう一度お試しください。");
+    } catch (e) {
+      setReportError(`レポート生成に失敗しました: ${(e as Error).message}`);
     } finally {
       setReportLoading(false);
     }
