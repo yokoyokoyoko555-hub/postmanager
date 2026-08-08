@@ -39,9 +39,10 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
     orderBy: { capturedAt: "desc" },
   });
 
-  const postLogs = postMetrics.length
+  const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
+  const postLogs = joinIds.length
     ? await prisma.postLog.findMany({
-        where: { platformPostId: { in: postMetrics.map((m) => m.platformPostId) }, status: "success" },
+        where: { platformPostId: { in: joinIds }, status: "success" },
         include: { draft: true },
       })
     : [];
@@ -56,7 +57,7 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
   const metricsLines = postMetrics.length
     ? postMetrics
         .map((m) => {
-          const text = (textByPostId.get(m.platformPostId) ?? "本文不明").slice(0, 40);
+          const text = (textByPostId.get(m.sourcePostId ?? m.platformPostId) ?? "本文不明").slice(0, 40);
           const saves = m.saves ? ` 保存${m.saves}` : "";
           return `- 「${text}」 いいね${m.likes} リポスト${m.reposts} 返信${m.replies} インプレッション${m.impressions}${saves}`;
         })

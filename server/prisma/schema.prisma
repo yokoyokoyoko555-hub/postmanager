@@ -107,6 +107,9 @@ model PostMetric {
   account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   platform       Platform
   platformPostId String
+  // リポスト(無言リポスト)の場合、Xのリポストレスポンスに新規ツイートIDが
+  // 含まれないため、本文を引くための元投稿IDをここに保持する
+  sourcePostId   String?
   likes          Int      @default(0)
   reposts        Int      @default(0)
   replies        Int      @default(0)

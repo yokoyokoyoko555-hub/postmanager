@@ -18,9 +18,10 @@ router.get("/", async (req, res) => {
     take: 10,
   });
 
-  const postLogs = postMetrics.length
+  const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
+  const postLogs = joinIds.length
     ? await prisma.postLog.findMany({
-        where: { platformPostId: { in: postMetrics.map((m) => m.platformPostId) }, status: "success" },
+        where: { platformPostId: { in: joinIds }, status: "success" },
         include: { draft: true },
       })
     : [];
@@ -30,7 +31,7 @@ router.get("/", async (req, res) => {
 
   res.json({
     accountMetric,
-    postMetrics: postMetrics.map((m) => ({ ...m, text: textByPostId.get(m.platformPostId) ?? null })),
+    postMetrics: postMetrics.map((m) => ({ ...m, text: textByPostId.get(m.sourcePostId ?? m.platformPostId) ?? null })),
   });
 });
 

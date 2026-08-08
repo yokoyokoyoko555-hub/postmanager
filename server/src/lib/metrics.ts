@@ -26,11 +26,15 @@ export async function collectMetricsForAccount(account: Account) {
       endTime: end.toISOString(),
     });
     for (const tweet of tweets) {
+      // リポストはXの仕様上、新規ツイートIDに対して元投稿の下書き情報が紐付かないため、
+      // 元投稿のIDをsourcePostIdとして保持し、本文表示時にそちらで引けるようにする
+      const retweetedRef = tweet.referenced_tweets?.find((r) => r.type === "retweeted");
       await prisma.postMetric.create({
         data: {
           accountId: account.id,
           platform: "x",
           platformPostId: tweet.id,
+          sourcePostId: retweetedRef?.id,
           likes: tweet.public_metrics.like_count ?? 0,
           reposts: tweet.public_metrics.retweet_count ?? 0,
           replies: tweet.public_metrics.reply_count ?? 0,

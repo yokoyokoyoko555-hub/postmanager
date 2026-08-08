@@ -189,7 +189,7 @@ export async function repost(params: { accessToken: string; userId: string; twee
 // 自分の投稿と指標(いいね/リポスト/リプライ/インプレッション)をまとめて取得
 export async function getOwnTweetsWithMetrics(params: { accessToken: string; userId: string; startTime?: string; endTime?: string }) {
   const url = new URL(`${API_BASE}/users/${params.userId}/tweets`);
-  url.searchParams.set("tweet.fields", "public_metrics,created_at");
+  url.searchParams.set("tweet.fields", "public_metrics,created_at,referenced_tweets");
   url.searchParams.set("max_results", "100");
   if (params.startTime) url.searchParams.set("start_time", params.startTime);
   if (params.endTime) url.searchParams.set("end_time", params.endTime);
@@ -197,7 +197,13 @@ export async function getOwnTweetsWithMetrics(params: { accessToken: string; use
   const res = await fetch(url, { headers: { Authorization: `Bearer ${params.accessToken}` } });
   if (!res.ok) throw new Error(`X tweets fetch failed: ${res.status} ${await res.text()}`);
   const data = (await res.json()) as {
-    data?: Array<{ id: string; text: string; created_at: string; public_metrics: Record<string, number> }>;
+    data?: Array<{
+      id: string;
+      text: string;
+      created_at: string;
+      public_metrics: Record<string, number>;
+      referenced_tweets?: Array<{ type: "retweeted" | "quoted" | "replied_to"; id: string }>;
+    }>;
   };
   return data.data ?? [];
 }
