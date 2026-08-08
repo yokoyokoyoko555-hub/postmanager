@@ -3,7 +3,7 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3, BookmarkPlus
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3, BookmarkPlus, Search
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
 import type { Account, AccountAnalytics, DailyReport, Draft, PostMode, Template } from "./types";
@@ -326,12 +326,15 @@ function DraftEditorModal({
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploading(true);
     try {
-      const url = await uploadImageToS3(file);
-      setMediaUrls((prev) => [...prev, url]);
+      const urls: string[] = [];
+      for (const file of files) {
+        urls.push(await uploadImageToS3(file));
+      }
+      setMediaUrls((prev) => [...prev, ...urls]);
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -426,7 +429,7 @@ function DraftEditorModal({
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
                 <span className="text-[9px]">ライブラリ</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} disabled={uploading} />
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
               </label>
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
@@ -555,12 +558,15 @@ function TemplateEditorModal({
   if (!open) return null;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploading(true);
     try {
-      const url = await uploadImageToS3(file);
-      setMediaUrls((prev) => [...prev, url]);
+      const urls: string[] = [];
+      for (const file of files) {
+        urls.push(await uploadImageToS3(file));
+      }
+      setMediaUrls((prev) => [...prev, ...urls]);
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -607,7 +613,7 @@ function TemplateEditorModal({
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
                 <span className="text-[9px]">ライブラリ</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} disabled={uploading} />
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
               </label>
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
@@ -802,6 +808,7 @@ export default function App() {
   const [reportsPage, setReportsPage] = useState(0);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [expandedPostedId, setExpandedPostedId] = useState<string | null>(null);
+  const [templateSearch, setTemplateSearch] = useState("");
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
   const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
 
@@ -1226,10 +1233,15 @@ export default function App() {
             templates.length === 0 ? (
               <EmptyState text="テンプレートはまだありません。よく使う投稿文の型を登録しておくと、下書き作成が速くなります。" />
             ) : (() => {
-              const sharedTemplates = templates.filter((t) => t.accountId === null);
-              const scopedTemplates = activeAccountId === "all"
+              const q = templateSearch.trim().toLowerCase();
+              const matchesSearch = (t: Template) =>
+                !q || t.title.toLowerCase().includes(q) || t.body.toLowerCase().includes(q);
+
+              const sharedTemplates = templates.filter((t) => t.accountId === null && matchesSearch(t));
+              const scopedTemplates = (activeAccountId === "all"
                 ? templates.filter((t) => t.accountId !== null)
-                : templates.filter((t) => t.accountId === activeAccountId);
+                : templates.filter((t) => t.accountId === activeAccountId)
+              ).filter(matchesSearch);
 
               const renderCard = (t: Template) => (
                 <FoilFrame key={t.id}>
@@ -1266,24 +1278,40 @@ export default function App() {
 
               return (
                 <div className="flex flex-col gap-6">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>共通テンプレート</div>
-                    {sharedTemplates.length === 0 ? (
-                      <p className="text-xs" style={{ color: MUTED }}>まだありません。</p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{sharedTemplates.map(renderCard)}</div>
-                    )}
+                  <div className="relative max-w-sm">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: MUTED }} />
+                    <input
+                      value={templateSearch}
+                      onChange={(e) => setTemplateSearch(e.target.value)}
+                      placeholder="テンプレートを検索(名前・本文)"
+                      className="w-full rounded pl-8 pr-3 py-2 text-sm"
+                      style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}
+                    />
                   </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>
-                      {activeAccountId === "all" ? "アカウント専用テンプレート" : `${accountOf(activeAccountId)?.displayName ?? ""}専用テンプレート`}
-                    </div>
-                    {scopedTemplates.length === 0 ? (
-                      <p className="text-xs" style={{ color: MUTED }}>まだありません。</p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{scopedTemplates.map(renderCard)}</div>
-                    )}
-                  </div>
+                  {sharedTemplates.length === 0 && scopedTemplates.length === 0 && q ? (
+                    <p className="text-xs" style={{ color: MUTED }}>「{templateSearch}」に一致するテンプレートは見つかりませんでした。</p>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>共通テンプレート</div>
+                        {sharedTemplates.length === 0 ? (
+                          <p className="text-xs" style={{ color: MUTED }}>{q ? "一致するテンプレートはありません。" : "まだありません。"}</p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{sharedTemplates.map(renderCard)}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide mb-2" style={{ color: MUTED, fontFamily: monoFont }}>
+                          {activeAccountId === "all" ? "アカウント専用テンプレート" : `${accountOf(activeAccountId)?.displayName ?? ""}専用テンプレート`}
+                        </div>
+                        {scopedTemplates.length === 0 ? (
+                          <p className="text-xs" style={{ color: MUTED }}>{q ? "一致するテンプレートはありません。" : "まだありません。"}</p>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{scopedTemplates.map(renderCard)}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })()
