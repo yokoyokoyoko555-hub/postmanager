@@ -9,6 +9,13 @@ function jstTodayDateOnlyUtc(): Date {
   return new Date(Date.UTC(jstNow.getUTCFullYear(), jstNow.getUTCMonth(), jstNow.getUTCDate()));
 }
 
+// 絵文字はUTF-16のサロゲートペアで表現されるため、単純なslice(0, n)だと
+// ペアの途中で切れて不正な文字列になりAI APIへのリクエストが壊れることがある。
+// Array.fromでコードポイント単位に分割してから切り詰める。
+function truncateSafe(text: string, maxLen: number): string {
+  return Array.from(text).slice(0, maxLen).join("");
+}
+
 export async function generateAndSaveDailyReport(accountId: string, provider: AiProvider = "claude") {
   const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
 
@@ -51,13 +58,13 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
   );
 
   const draftLines = drafts.length
-    ? drafts.map((d) => `- ${d.text.slice(0, 60)}`).join("\n")
+    ? drafts.map((d) => `- ${truncateSafe(d.text, 60)}`).join("\n")
     : "（直近の投稿記録なし）";
 
   const metricsLines = postMetrics.length
     ? postMetrics
         .map((m) => {
-          const text = (textByPostId.get(m.sourcePostId ?? m.platformPostId) ?? "本文不明").slice(0, 40);
+          const text = truncateSafe(textByPostId.get(m.sourcePostId ?? m.platformPostId) ?? "本文不明", 40);
           const saves = m.saves ? ` 保存${m.saves}` : "";
           return `- 「${text}」 いいね${m.likes} リポスト${m.reposts} 返信${m.replies} インプレッション${m.impressions}${saves}`;
         })
