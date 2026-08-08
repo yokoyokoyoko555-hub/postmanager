@@ -764,6 +764,9 @@ export default function App() {
       );
       setReports((prev) => [...newReports, ...prev.filter((r) => !newReports.some((n) => n.id === r.id))]);
       if (errors?.length) setReportError(`一部のアカウントでレポート生成に失敗しました: ${errors.map((e) => e.error).join(" / ")}`);
+      if (activeAccountId !== "all") {
+        api.metrics.get(activeAccountId).then(setAccountAnalytics).catch(() => {});
+      }
     } catch {
       setReportError("レポート生成に失敗しました。もう一度お試しください。");
     } finally {
