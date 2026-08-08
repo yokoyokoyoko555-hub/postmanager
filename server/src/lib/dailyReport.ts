@@ -86,7 +86,7 @@ ${draftLines}
 出力は次のJSON形式のみを返してください。前置き・コードブロック記法は不要です:
 {"review":"直近の振り返り(3〜4文)","improvements":"改善点(3〜4文)","next_actions":"ネクストアクション(3〜4文、箇条書き調でも可)"}`;
 
-  const parsed = await generateJson<{ review: string; improvements: string; next_actions: string }>(prompt, provider, 800);
+  const parsed = await generateJson<{ review: string; improvements: string; next_actions: string }>(prompt, provider, 2000);
 
   const reportDate = jstTodayDateOnlyUtc();
 
