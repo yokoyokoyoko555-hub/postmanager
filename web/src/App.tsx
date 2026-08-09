@@ -202,10 +202,12 @@ function DraftCard({
 /* --------------------------------------------------------- 投稿履歴(蛇腹表示) --------------------------------------------------------- */
 function PostedAccordionItem({
   draft, account, open, onToggle, onEdit, onDelete, onTogglePosted, onRepost, onSaveAsTemplate,
+  onCreateDraft, onRepostSameTime,
 }: {
   draft: Draft; account?: Account; open: boolean; onToggle: () => void;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void; onTogglePosted: (d: Draft) => void;
   onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
+  onCreateDraft: (d: Draft) => void; onRepostSameTime: (d: Draft) => void;
 }) {
   const canRepost = draft.platform === "x" && !!draft.postLogs?.[0]?.platformPostId;
   const time = draft.postedAt
@@ -243,6 +245,12 @@ function PostedAccordionItem({
             <div className="flex items-center gap-0.5">
               <button onClick={() => onEdit(draft)} title="編集" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
                 <Pencil size={14} />
+              </button>
+              <button onClick={() => onCreateDraft(draft)} title="この内容を下書きにする" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
+                <FileText size={14} />
+              </button>
+              <button onClick={() => onRepostSameTime(draft)} title="同じ文章・同じ時間で本日再投稿する" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: GOLD }}>
+                <RefreshCw size={14} />
               </button>
               {canRepost && (
                 <button onClick={() => onRepost(draft)} title="この投稿をリポストする下書きを作成" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: HOLO_A }}>
@@ -811,6 +819,7 @@ export default function App() {
   const [templateSearch, setTemplateSearch] = useState("");
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
   const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
+  const [draftInitialAccountId, setDraftInitialAccountId] = useState<string | undefined>(undefined);
 
   const reloadAll = async () => {
     try {
@@ -894,6 +903,7 @@ export default function App() {
     setEditingDraft(null);
     setDraftInitialText(undefined);
     setDraftInitialMediaUrls(undefined);
+    setDraftInitialAccountId(undefined);
   };
 
   const deleteDraft = async (draft: Draft) => {
@@ -977,7 +987,42 @@ export default function App() {
     setEditingDraft(null);
     setDraftInitialText(template.body);
     setDraftInitialMediaUrls(template.mediaUrls);
+    setDraftInitialAccountId(undefined);
     setEditorOpen(true);
+  };
+
+  // 過去の投稿を下書きとして複製する(本文・画像・アカウントを引き継ぐ)
+  const createDraftFromPost = (draft: Draft) => {
+    setEditingDraft(null);
+    setDraftInitialText(draft.text);
+    setDraftInitialMediaUrls(draft.mediaUrls);
+    setDraftInitialAccountId(draft.accountId);
+    setEditorOpen(true);
+  };
+
+  // 過去の投稿と同じ文章・同じ時刻(JST)で、日付だけ本日にして予約投稿を作成する
+  const repostSameTimeToday = async (draft: Draft) => {
+    if (!draft.postedAt) {
+      alert("元の投稿日時が不明なため実行できません");
+      return;
+    }
+    const account = accountOf(draft.accountId);
+    const origShifted = new Date(new Date(draft.postedAt).getTime() + 9 * 60 * 60 * 1000);
+    const hour = origShifted.getUTCHours();
+    const minute = origShifted.getUTCMinutes();
+    const today = nowJstParts();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const localValue = `${today.year}-${pad(today.month)}-${pad(today.day)}T${pad(hour)}:${pad(minute)}`;
+    if (!confirm(`${account?.displayName ?? ""}として、同じ内容を本日${pad(hour)}:${pad(minute)}に予約投稿します。よろしいですか?`)) return;
+    try {
+      const created = await api.drafts.create({ accountId: draft.accountId, text: draft.text, mediaUrls: draft.mediaUrls, source: "manual" });
+      const scheduled = await api.drafts.schedule(created.id, jstLocalInputToIso(localValue));
+      setDrafts((prev) => [scheduled, ...prev]);
+      setTab("scheduled");
+      alert("本日の同時刻に予約投稿として登録しました。");
+    } catch (e) {
+      alert(`予約投稿の作成に失敗しました: ${(e as Error).message}`);
+    }
   };
 
   const saveAccount = async (v: { platform: "x" | "instagram"; displayName: string; handle: string }) => {
@@ -1394,6 +1439,8 @@ export default function App() {
                                 onTogglePosted={togglePosted}
                                 onRepost={repostDraft}
                                 onSaveAsTemplate={saveTextAsTemplate}
+                                onCreateDraft={createDraftFromPost}
+                                onRepostSameTime={repostSameTimeToday}
                               />
                             ))}
                           </div>
@@ -1440,8 +1487,8 @@ export default function App() {
         drafts={drafts}
         initialText={draftInitialText}
         initialMediaUrls={draftInitialMediaUrls}
-        defaultAccountId={activeAccountId === "all" ? undefined : activeAccountId}
-        onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); setDraftInitialMediaUrls(undefined); }}
+        defaultAccountId={draftInitialAccountId ?? (activeAccountId === "all" ? undefined : activeAccountId)}
+        onClose={() => { setEditorOpen(false); setEditingDraft(null); setDraftInitialText(undefined); setDraftInitialMediaUrls(undefined); setDraftInitialAccountId(undefined); }}
         onSave={saveDraft}
         onSaveAsTemplate={saveTextAsTemplate}
       />
