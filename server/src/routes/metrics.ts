@@ -13,12 +13,15 @@ router.get("/", async (req, res) => {
     orderBy: { capturedAt: "desc" },
   });
 
+  // 「直近48時間」の実件数が正しく出るよう、表示件数を人為的に10件へ切り詰めない
+  // (収集は48時間ローリングウィンドウなので、投稿ごとに重複排除した上で全件返す)
+  const windowStart = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const recentRows = await prisma.postMetric.findMany({
-    where: { accountId },
+    where: { accountId, capturedAt: { gte: windowStart } },
     orderBy: { capturedAt: "desc" },
-    take: 300,
+    take: 500,
   });
-  const postMetrics = latestPostMetricsByPost(recentRows).slice(0, 10);
+  const postMetrics = latestPostMetricsByPost(recentRows);
 
   const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
   const postLogs = joinIds.length
