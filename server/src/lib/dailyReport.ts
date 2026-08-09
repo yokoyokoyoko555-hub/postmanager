@@ -43,8 +43,9 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
     orderBy: { capturedAt: "desc" },
     take: 300,
   });
+  // 無言リポストは新規投稿ではなく過去投稿の再共有なので投稿数に含めない
   const postMetrics = latestPostMetricsByPost(recentRows)
-    .filter((m) => m.postedAt && m.postedAt >= windowStart)
+    .filter((m) => m.postedAt && m.postedAt >= windowStart && !m.sourcePostId)
     .slice(0, 20);
   const accountMetric = await prisma.accountMetric.findFirst({
     where: { accountId },

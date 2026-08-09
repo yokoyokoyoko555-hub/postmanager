@@ -1542,9 +1542,16 @@ function AnalyticsSummary({ data, platform }: { data: AccountAnalytics; platform
   return (
     <FoilFrame>
       <div className="p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <BarChart3 size={14} style={{ color: HOLO_A }} />
-          <span className="text-xs uppercase tracking-wide" style={{ color: MUTED, fontFamily: monoFont }}>アナリティクス</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={14} style={{ color: HOLO_A }} />
+            <span className="text-xs uppercase tracking-wide" style={{ color: MUTED, fontFamily: monoFont }}>アナリティクス</span>
+          </div>
+          {am && (
+            <span className="text-[10px]" style={{ color: MUTED, fontFamily: monoFont }}>
+              最終更新: {formatDateTime(am.capturedAt)}
+            </span>
+          )}
         </div>
         {!am ? (
           <p className="text-xs" style={{ color: MUTED }}>まだ指標データがありません。「レポートを生成」を押すと最新の指標を取得します。</p>

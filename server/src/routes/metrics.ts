@@ -22,8 +22,11 @@ router.get("/", async (req, res) => {
     orderBy: { capturedAt: "desc" },
     take: 500,
   });
+  // 無言リポスト(sourcePostIdあり)は新規投稿ではなく過去投稿の再共有なので、
+  // 「投稿数」には含めない(タイムライン上は別ツイートとして扱われるため、
+  // 何もしないと実際より多くカウントされてしまう)
   const postMetrics = latestPostMetricsByPost(recentRows).filter(
-    (m) => m.postedAt && m.postedAt >= windowStart,
+    (m) => m.postedAt && m.postedAt >= windowStart && !m.sourcePostId,
   );
 
   const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
