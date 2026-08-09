@@ -1,6 +1,6 @@
 import type { AiProvider } from "./aiProvider.js";
 import { generateJson } from "./aiProvider.js";
-import { collectMetricsForAccount } from "./metrics.js";
+import { collectMetricsForAccount, latestPostMetricsByPost } from "./metrics.js";
 import { prisma } from "./prisma.js";
 
 // レポートの日付ラベルは日本時間の「今日」の日付を使う
@@ -36,11 +36,12 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
     take: 20,
   });
 
-  const postMetrics = await prisma.postMetric.findMany({
+  const recentRows = await prisma.postMetric.findMany({
     where: { accountId, capturedAt: { gte: windowStart } },
     orderBy: { capturedAt: "desc" },
-    take: 20,
+    take: 300,
   });
+  const postMetrics = latestPostMetricsByPost(recentRows).slice(0, 20);
   const accountMetric = await prisma.accountMetric.findFirst({
     where: { accountId },
     orderBy: { capturedAt: "desc" },

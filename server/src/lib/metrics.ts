@@ -1,8 +1,26 @@
-import type { Account } from "@prisma/client";
+import type { Account, PostMetric } from "@prisma/client";
 import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
 import { prisma } from "./prisma.js";
 import { ensureFreshXToken } from "./xAuth.js";
+
+// 指標収集は実行するたびに同じ投稿へ新しい行を追加していく(履歴として残すため)ので、
+// 1つの投稿に対して複数のスナップショット行が存在しうる。表示・レポート用には
+// 投稿ごとに最新のスナップショットだけを残し、投稿日時(postedAt)の新しい順に並べる。
+export function latestPostMetricsByPost(rows: PostMetric[]): PostMetric[] {
+  const latestById = new Map<string, PostMetric>();
+  for (const row of rows) {
+    const existing = latestById.get(row.platformPostId);
+    if (!existing || row.capturedAt > existing.capturedAt) {
+      latestById.set(row.platformPostId, row);
+    }
+  }
+  return [...latestById.values()].sort((a, b) => {
+    const at = (a.postedAt ?? a.capturedAt).getTime();
+    const bt = (b.postedAt ?? b.capturedAt).getTime();
+    return bt - at;
+  });
+}
 
 // 直近48時間分の投稿指標・アカウント指標を収集してDBへ保存する
 // (カレンダー日固定にすると、生成した当日の投稿がレポートに反映されないため
@@ -35,6 +53,7 @@ export async function collectMetricsForAccount(account: Account) {
           platform: "x",
           platformPostId: tweet.id,
           sourcePostId: retweetedRef?.id,
+          postedAt: new Date(tweet.created_at),
           likes: tweet.public_metrics.like_count ?? 0,
           reposts: tweet.public_metrics.retweet_count ?? 0,
           replies: tweet.public_metrics.reply_count ?? 0,

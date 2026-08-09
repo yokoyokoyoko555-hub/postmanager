@@ -110,6 +110,10 @@ model PostMetric {
   // リポスト(無言リポスト)の場合、Xのリポストレスポンスに新規ツイートIDが
   // 含まれないため、本文を引くための元投稿IDをここに保持する
   sourcePostId   String?
+  // 投稿自体の日時(Xのcreated_at)。指標収集を実行した日時(capturedAt)とは別。
+  // これが無いと「最近投稿された順」に並べられず、収集タイミング次第で
+  // 古い投稿が表示されてしまう
+  postedAt       DateTime?
   likes          Int      @default(0)
   reposts        Int      @default(0)
   replies        Int      @default(0)

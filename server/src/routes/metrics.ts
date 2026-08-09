@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { latestPostMetricsByPost } from "../lib/metrics.js";
 import { prisma } from "../lib/prisma.js";
 
 const router = Router();
@@ -12,11 +13,12 @@ router.get("/", async (req, res) => {
     orderBy: { capturedAt: "desc" },
   });
 
-  const postMetrics = await prisma.postMetric.findMany({
+  const recentRows = await prisma.postMetric.findMany({
     where: { accountId },
     orderBy: { capturedAt: "desc" },
-    take: 10,
+    take: 300,
   });
+  const postMetrics = latestPostMetricsByPost(recentRows).slice(0, 10);
 
   const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
   const postLogs = joinIds.length
