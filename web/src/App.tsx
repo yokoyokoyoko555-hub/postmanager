@@ -1421,7 +1421,7 @@ export default function App() {
                     return (
                       <div key={col.key} className="flex flex-col gap-2 min-w-0">
                         <div className="text-xs uppercase tracking-wide flex items-center gap-1.5" style={{ color: MUTED, fontFamily: monoFont }}>
-                          {col.label} <span style={{ color: HAIRLINE }}>|</span> {col.dateLabel}
+                          {col.label} <span style={{ color: HAIRLINE }}>|</span> {col.dateLabel} <span style={{ color: HAIRLINE }}>|</span> {items.length}件
                         </div>
                         {items.length === 0 ? (
                           <p className="text-xs" style={{ color: MUTED }}>投稿なし</p>
