@@ -13,15 +13,18 @@ router.get("/", async (req, res) => {
     orderBy: { capturedAt: "desc" },
   });
 
-  // 「直近48時間」の実件数が正しく出るよう、表示件数を人為的に10件へ切り詰めない
-  // (収集は48時間ローリングウィンドウなので、投稿ごとに重複排除した上で全件返す)
+  // 「直近48時間」は投稿自体の日時(postedAt)で判定する。収集した時刻(capturedAt)で
+  // 絞り込むと、何度も再収集するたびに古い投稿まで「最近収集したから」という理由で
+  // 混ざり続けてしまう(実際に発生した不具合)。
   const windowStart = new Date(Date.now() - 48 * 60 * 60 * 1000);
   const recentRows = await prisma.postMetric.findMany({
-    where: { accountId, capturedAt: { gte: windowStart } },
+    where: { accountId },
     orderBy: { capturedAt: "desc" },
     take: 500,
   });
-  const postMetrics = latestPostMetricsByPost(recentRows);
+  const postMetrics = latestPostMetricsByPost(recentRows).filter(
+    (m) => m.postedAt && m.postedAt >= windowStart,
+  );
 
   const joinIds = postMetrics.map((m) => m.sourcePostId ?? m.platformPostId);
   const postLogs = joinIds.length

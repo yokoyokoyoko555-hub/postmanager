@@ -36,12 +36,16 @@ export async function generateAndSaveDailyReport(accountId: string, provider: Ai
     take: 20,
   });
 
+  // 収集時刻(capturedAt)ではなく投稿自体の日時(postedAt)で48時間を判定する
+  // (再収集のたびに古い投稿が混ざり続ける不具合の対策)
   const recentRows = await prisma.postMetric.findMany({
-    where: { accountId, capturedAt: { gte: windowStart } },
+    where: { accountId },
     orderBy: { capturedAt: "desc" },
     take: 300,
   });
-  const postMetrics = latestPostMetricsByPost(recentRows).slice(0, 20);
+  const postMetrics = latestPostMetricsByPost(recentRows)
+    .filter((m) => m.postedAt && m.postedAt >= windowStart)
+    .slice(0, 20);
   const accountMetric = await prisma.accountMetric.findFirst({
     where: { accountId },
     orderBy: { capturedAt: "desc" },
