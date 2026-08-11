@@ -109,10 +109,14 @@ function browserLikeHeaders(accessToken: string, extra?: Record<string, string>)
 // 「再連携すれば直る」ことがはっきりしているため、専用の分かりやすいメッセージにする
 export const X_RECONNECT_MESSAGE = "Xとの連携が切れています。「アカウント」タブから再連携してください。";
 
+export const X_SERVICE_UNAVAILABLE_MESSAGE =
+  "X側で一時的に障害が発生している可能性があります(Service Unavailable)。しばらく経ってから再度お試しください。";
+
 async function throwWithDiagnostics(label: string, res: Response): Promise<never> {
   const body = await res.text();
   console.error(label, { status: res.status, headers: Object.fromEntries(res.headers.entries()), body });
   if (res.status === 401) throw new Error(X_RECONNECT_MESSAGE);
+  if (res.status === 503) throw new Error(X_SERVICE_UNAVAILABLE_MESSAGE);
   throw new Error(`${label}: ${res.status} ${body}`);
 }
 
