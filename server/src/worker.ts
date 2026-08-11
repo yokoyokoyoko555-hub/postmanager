@@ -2,23 +2,26 @@ import "dotenv/config";
 import cron from "node-cron";
 import { generateDailyReportsForAllAccounts } from "./lib/dailyReport.js";
 import { prisma } from "./lib/prisma.js";
-import { publishDraft } from "./lib/publish.js";
+import { claimDraftForPosting, publishDraft } from "./lib/publish.js";
 
 const MAX_RETRIES = 3;
 
 async function runScheduledPosts() {
   const due = await prisma.draft.findMany({
     where: { status: "scheduled", scheduledAt: { lte: new Date() } },
-    include: { account: true },
   });
 
-  for (const draft of due) {
+  for (const due_ of due) {
+    // 「今すぐ投稿」など他の実行と重ならないようアトミックに確保できた場合のみ処理する
+    const draft = await claimDraftForPosting(due_.id);
+    if (!draft) continue;
+
     try {
       const platformPostId = await publishDraft(draft, draft.account);
       await prisma.$transaction([
         prisma.draft.update({
           where: { id: draft.id },
-          data: { status: "posted", postedAt: new Date(), lastError: null },
+          data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false },
         }),
         prisma.postLog.create({
           data: { draftId: draft.id, platformPostId, status: "success" },
@@ -33,7 +36,7 @@ async function runScheduledPosts() {
         await prisma.$transaction([
           prisma.draft.update({
             where: { id: draft.id },
-            data: { status: "failed", retryCount, lastError: message },
+            data: { status: "failed", retryCount, lastError: message, postInProgress: false },
           }),
           prisma.postLog.create({
             data: { draftId: draft.id, status: "failed", errorMessage: message },
@@ -48,6 +51,7 @@ async function runScheduledPosts() {
             retryCount,
             lastError: message,
             scheduledAt: new Date(Date.now() + backoffMinutes * 60_000),
+            postInProgress: false,
           },
         });
         console.warn(`[worker] draft ${draft.id} failed, retry ${retryCount}/${MAX_RETRIES}: ${message}`);

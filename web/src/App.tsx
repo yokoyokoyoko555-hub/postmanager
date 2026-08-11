@@ -136,14 +136,15 @@ function FoilFrame({ children, holo = false }: { children: React.ReactNode; holo
 
 /* --------------------------------------------------------- 下書きカード --------------------------------------------------------- */
 function DraftCard({
-  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow, onRepost, onSaveAsTemplate,
+  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow, onRepost, onSaveAsTemplate, posting = false,
 }: {
   draft: Draft; account?: Account;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void;
   onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void; onPostNow: (d: Draft) => void;
   onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
+  posting?: boolean;
 }) {
-  const canPostNow = draft.status !== "posted" && !!account?.connected;
+  const canPostNow = draft.status !== "posted" && !!account?.connected && !posting;
   const canRepost = draft.status === "posted" && draft.platform === "x" && !!draft.postLogs?.[0]?.platformPostId;
   return (
     <FoilFrame holo={draft.source === "ai"}>
@@ -181,11 +182,11 @@ function DraftCard({
             <button
               onClick={() => onPostNow(draft)}
               disabled={!canPostNow}
-              title={account?.connected ? "今すぐ投稿" : "先にアカウント連携が必要です"}
+              title={posting ? "投稿処理中…" : account?.connected ? "今すぐ投稿" : "先にアカウント連携が必要です"}
               className="p-1.5 rounded hover:opacity-80 transition disabled:opacity-30 disabled:hover:opacity-30"
               style={{ color: HOLO_A }}
             >
-              <Send size={15} />
+              {posting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             </button>
             <button onClick={() => onSchedule(draft)} title="予約日時を設定" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: GOLD }}>
               <Clock size={15} />
@@ -831,6 +832,7 @@ export default function App() {
   const [reportsPage, setReportsPage] = useState(0);
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [expandedPostedId, setExpandedPostedId] = useState<string | null>(null);
+  const [postingIds, setPostingIds] = useState<Set<string>>(new Set());
   const [templateSearch, setTemplateSearch] = useState("");
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
   const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
@@ -932,18 +934,26 @@ export default function App() {
   };
 
   const postNow = async (draft: Draft) => {
+    if (postingIds.has(draft.id)) return; // 連打防止
     const account = accountOf(draft.accountId);
     if (!account?.connected) {
       alert("先にアカウント連携が必要です(「アカウント」タブから連携できます)");
       return;
     }
     if (!confirm(`${account.displayName}(${account.handle})として今すぐ投稿します。よろしいですか?`)) return;
+    setPostingIds((prev) => new Set(prev).add(draft.id));
     try {
       const updated = await api.drafts.postNow(draft.id);
       setDrafts((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
     } catch (e) {
       alert(`投稿に失敗しました: ${(e as Error).message}`);
       reloadAll();
+    } finally {
+      setPostingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(draft.id);
+        return next;
+      });
     }
   };
 
@@ -1487,6 +1497,7 @@ export default function App() {
                   onPostNow={postNow}
                   onRepost={repostDraft}
                   onSaveAsTemplate={saveTextAsTemplate}
+                  posting={postingIds.has(d.id)}
                 />
               ))}
             </div>

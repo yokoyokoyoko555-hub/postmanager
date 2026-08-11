@@ -54,16 +54,39 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
   });
 }
 
+// 「今すぐ投稿」の連打や、ワーカーの自動実行とのタイミング重複による二重投稿を防ぐため、
+// postInProgressフラグをDB上でアトミックに立てられた場合のみ処理を進める。
+// (updateManyのwhere条件がマッチしなければ他プロセス/リクエストが既に処理中と判断できる)
+export async function claimDraftForPosting(draftId: string) {
+  // デプロイ等でプロセスが処理途中に落ちた場合に永久ロックされないよう、
+  // 一定時間(5分、動画処理待ちの最大時間より十分長い)経過したロックは再取得可能にする
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+  const claimed = await prisma.draft.updateMany({
+    where: {
+      id: draftId,
+      status: { notIn: ["posted"] },
+      OR: [{ postInProgress: false }, { updatedAt: { lt: staleThreshold } }],
+    },
+    data: { postInProgress: true },
+  });
+  if (claimed.count === 0) return null;
+  return prisma.draft.findUniqueOrThrow({ where: { id: draftId }, include: { account: true } });
+}
+
 // 「今すぐ投稿」用: 予約を待たずに1回だけ投稿を試みる(リトライはしない)
 export async function postDraftNow(draftId: string) {
-  const draft = await prisma.draft.findUniqueOrThrow({ where: { id: draftId }, include: { account: true } });
+  const draft = await claimDraftForPosting(draftId);
+  if (!draft) {
+    const existing = await prisma.draft.findUniqueOrThrow({ where: { id: draftId } });
+    return { ok: false as const, draft: existing, error: "この下書きは処理中か、既に投稿済みのため実行できません(二重投稿防止)" };
+  }
 
   try {
     const platformPostId = await publishDraft(draft, draft.account);
     const [updated] = await prisma.$transaction([
       prisma.draft.update({
         where: { id: draft.id },
-        data: { status: "posted", postedAt: new Date(), lastError: null },
+        data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false },
       }),
       prisma.postLog.create({
         data: { draftId: draft.id, platformPostId, status: "success" },
@@ -75,7 +98,7 @@ export async function postDraftNow(draftId: string) {
     const [updated] = await prisma.$transaction([
       prisma.draft.update({
         where: { id: draft.id },
-        data: { status: "failed", lastError: message },
+        data: { status: "failed", lastError: message, postInProgress: false },
       }),
       prisma.postLog.create({
         data: { draftId: draft.id, status: "failed", errorMessage: message },

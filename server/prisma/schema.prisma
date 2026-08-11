@@ -83,6 +83,8 @@ model Draft {
   quoteTargetId  String?
   lastError      String?
   retryCount     Int         @default(0)
+  // 「今すぐ投稿」の連打やワーカーとの同時実行による二重投稿を防ぐための排他フラグ
+  postInProgress Boolean     @default(false)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
