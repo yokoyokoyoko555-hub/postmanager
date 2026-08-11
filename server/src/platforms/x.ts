@@ -202,7 +202,8 @@ async function waitForMediaProcessing(
     if (Date.now() > deadline) throw new Error("X media upload timed out (動画の処理待ちがタイムアウトしました)");
     await new Promise((resolve) => setTimeout(resolve, (info.check_after_secs ?? 3) * 1000));
 
-    const statusRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/${mediaId}/status`, {
+    // STATUSのみ他(INIT/APPEND/FINALIZE)と違い、パス方式ではなくクエリパラメータ方式
+    const statusRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}?command=STATUS&media_id=${mediaId}`, {
       method: "GET",
       headers: browserLikeHeaders(accessToken),
     });
