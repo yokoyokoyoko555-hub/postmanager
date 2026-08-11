@@ -148,6 +148,7 @@ const STATUS_POLL_TIMEOUT_MS = 90_000; // 動画処理の完了待ちの上限(�
 // 旧v1.1 upload.x.comはCloudflareのボット対策で弾かれるため、投稿と同じapi.x.comドメインを使う。
 export async function uploadMedia(accessToken: string, mediaBuffer: Buffer, mimeType: string) {
   const category = mediaCategoryFor(mimeType);
+  console.log("X media upload starting", { mimeType, category, totalBytes: mediaBuffer.length });
 
   const initRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/initialize`, {
     method: "POST",

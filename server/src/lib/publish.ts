@@ -22,7 +22,10 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
 
     const mediaIds: string[] = [];
     for (const url of draft.mediaUrls) {
-      const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+      const mediaRes = await fetch(url);
+      if (!mediaRes.ok) throw new Error(`画像/動画の取得に失敗しました(${mediaRes.status}): ${url}`);
+      const buf = Buffer.from(await mediaRes.arrayBuffer());
+      console.log("fetched media for upload", { url, bytes: buf.length, contentType: mediaRes.headers.get("content-type") });
       mediaIds.push(await x.uploadMedia(accessToken, buf, x.guessMimeType(url)));
     }
     const result = await x.postTweet({
