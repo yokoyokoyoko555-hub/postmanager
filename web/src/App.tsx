@@ -83,6 +83,21 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
+const VIDEO_EXTENSIONS = ["mp4", "mov", "webm", "m4v"];
+function isVideoUrl(url: string): boolean {
+  const ext = url.split(".").pop()?.toLowerCase().split(/[?#]/)[0];
+  return !!ext && VIDEO_EXTENSIONS.includes(ext);
+}
+
+function MediaThumb({ url, size = 48 }: { url: string; size?: number }) {
+  const style = { width: size, height: size, border: `1px solid ${HAIRLINE}` };
+  return isVideoUrl(url) ? (
+    <video src={url} muted className="object-cover rounded" style={style} />
+  ) : (
+    <img src={url} alt="" className="object-cover rounded" style={style} />
+  );
+}
+
 /* --------------------------------------------------------- 汎用パーツ --------------------------------------------------------- */
 function StatusPill({ status, scheduledAt, postedAt }: { status: Draft["status"]; scheduledAt: string | null; postedAt?: string | null }) {
   const map: Record<Draft["status"], { label: string; color: string; bg: string }> = {
@@ -150,7 +165,7 @@ function DraftCard({
         {draft.mediaUrls.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             {draft.mediaUrls.map((url) => (
-              <img key={url} src={url} alt="" className="w-12 h-12 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+              <MediaThumb key={url} url={url} />
             ))}
           </div>
         )}
@@ -236,7 +251,7 @@ function PostedAccordionItem({
           {draft.mediaUrls.length > 0 && (
             <div className="flex gap-1.5 flex-wrap">
               {draft.mediaUrls.map((url) => (
-                <img key={url} src={url} alt="" className="w-12 h-12 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                <MediaThumb key={url} url={url} />
               ))}
             </div>
           )}
@@ -424,11 +439,11 @@ function DraftEditorModal({
             </div>
           </div>
           <div>
-            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像(任意、Instagramは1枚必須)</label>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意、Instagramは1枚必須)</label>
             <div className="flex flex-wrap gap-2 mt-1.5">
               {mediaUrls.map((url) => (
                 <div key={url} className="relative">
-                  <img src={url} alt="" className="w-16 h-16 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                  <MediaThumb url={url} size={64} />
                   <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
                     <X size={10} />
                   </button>
@@ -437,7 +452,7 @@ function DraftEditorModal({
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
                 <span className="text-[9px]">ライブラリ</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
               </label>
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
@@ -608,11 +623,11 @@ function TemplateEditorModal({
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} />
           </div>
           <div>
-            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像(任意)</label>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意)</label>
             <div className="flex flex-wrap gap-2 mt-1.5">
               {mediaUrls.map((url) => (
                 <div key={url} className="relative">
-                  <img src={url} alt="" className="w-16 h-16 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                  <MediaThumb url={url} size={64} />
                   <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
                     <X size={10} />
                   </button>
@@ -621,7 +636,7 @@ function TemplateEditorModal({
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
                 <span className="text-[9px]">ライブラリ</span>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
               </label>
               <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
@@ -1301,7 +1316,7 @@ export default function App() {
                     {t.mediaUrls.length > 0 && (
                       <div className="flex gap-1.5 flex-wrap">
                         {t.mediaUrls.map((url) => (
-                          <img key={url} src={url} alt="" className="w-12 h-12 object-cover rounded" style={{ border: `1px solid ${HAIRLINE}` }} />
+                          <MediaThumb key={url} url={url} />
                         ))}
                       </div>
                     )}

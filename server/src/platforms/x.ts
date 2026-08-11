@@ -74,7 +74,13 @@ export async function refreshAccessToken(refreshToken: string) {
       refresh_token: refreshToken,
     }),
   });
-  if (!res.ok) throw new Error(`X token refresh failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("X token refresh failed", { status: res.status, body });
+    // リフレッシュトークン失効時、XはOAuth標準に沿って401ではなく400(invalid_grant)を返すことが多い
+    if (res.status === 400 || res.status === 401) throw new Error(X_RECONNECT_MESSAGE);
+    throw new Error(`X token refresh failed: ${res.status} ${body}`);
+  }
   return (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number };
 }
 
@@ -82,7 +88,7 @@ export async function getMe(accessToken: string) {
   const res = await fetch(`${API_BASE}/users/me?user.fields=public_metrics`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`X getMe failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwWithDiagnostics("X getMe failed", res);
   return (await res.json()) as {
     data: { id: string; username: string; name: string; public_metrics?: Record<string, number> };
   };
@@ -99,43 +105,112 @@ function browserLikeHeaders(accessToken: string, extra?: Record<string, string>)
   };
 }
 
+// トークンが失効/取り消し済みの場合にXが返す401は、他のエラーと違い
+// 「再連携すれば直る」ことがはっきりしているため、専用の分かりやすいメッセージにする
+export const X_RECONNECT_MESSAGE = "Xとの連携が切れています。「アカウント」タブから再連携してください。";
+
 async function throwWithDiagnostics(label: string, res: Response): Promise<never> {
   const body = await res.text();
   console.error(label, { status: res.status, headers: Object.fromEntries(res.headers.entries()), body });
+  if (res.status === 401) throw new Error(X_RECONNECT_MESSAGE);
   throw new Error(`${label}: ${res.status} ${body}`);
 }
 
-// X API v2のメディアアップロード(INIT→APPEND→FINALIZE)。
-// 旧v1.1 upload.x.comはCloudflareのボット対策で弾かれるため、投稿と同じapi.x.comドメインを使う。
-export async function uploadMedia(accessToken: string, imageBuffer: Buffer, mimeType: string) {
-  const category = mimeType === "image/gif" ? "tweet_gif" : "tweet_image";
+// X側の一時的な5xx(Service Unavailableなど)は数秒後のリトライで復帰することが多いため、
+// 4xx(認証・入力エラーなど)は即座に諦め、5xxのみ短い間隔でリトライする
+async function fetchWithRetry(url: string, init: RequestInit, maxAttempts = 3): Promise<Response> {
+  let lastRes: Response | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, init);
+    if (res.ok || res.status < 500) return res;
+    lastRes = res;
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  return lastRes!;
+}
 
-  const initRes = await fetch(`${MEDIA_UPLOAD_BASE}/initialize`, {
+function mediaCategoryFor(mimeType: string): "tweet_image" | "tweet_gif" | "tweet_video" {
+  if (mimeType === "image/gif") return "tweet_gif";
+  if (mimeType.startsWith("video/")) return "tweet_video";
+  return "tweet_image";
+}
+
+const APPEND_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB。動画は1回のAPPENDに収まらないことがあるため分割する
+const STATUS_POLL_TIMEOUT_MS = 90_000; // 動画処理の完了待ちの上限(これを超えたら諦めてエラーにする)
+
+// X API v2のメディアアップロード(INIT→APPEND→FINALIZE→[動画/GIFのみ]STATUS待ち)。
+// 旧v1.1 upload.x.comはCloudflareのボット対策で弾かれるため、投稿と同じapi.x.comドメインを使う。
+export async function uploadMedia(accessToken: string, mediaBuffer: Buffer, mimeType: string) {
+  const category = mediaCategoryFor(mimeType);
+
+  const initRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/initialize`, {
     method: "POST",
     headers: browserLikeHeaders(accessToken, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ media_type: mimeType, media_category: category, total_bytes: imageBuffer.length }),
+    body: JSON.stringify({ media_type: mimeType, media_category: category, total_bytes: mediaBuffer.length }),
   });
   if (!initRes.ok) await throwWithDiagnostics("X media upload (initialize) failed", initRes);
   const initData = (await initRes.json()) as { data: { id: string } };
   const mediaId = initData.data.id;
 
-  const form = new FormData();
-  form.append("segment_index", "0");
-  form.append("media", new Blob([new Uint8Array(imageBuffer)], { type: mimeType }));
-  const appendRes = await fetch(`${MEDIA_UPLOAD_BASE}/${mediaId}/append`, {
-    method: "POST",
-    headers: browserLikeHeaders(accessToken),
-    body: form,
-  });
-  if (!appendRes.ok) await throwWithDiagnostics("X media upload (append) failed", appendRes);
+  // 動画など大きいファイルは4MBずつに分割してAPPENDする(1回のリクエストに収まらないため)
+  for (let offset = 0, segmentIndex = 0; offset < mediaBuffer.length; offset += APPEND_CHUNK_SIZE, segmentIndex++) {
+    const chunk = mediaBuffer.subarray(offset, offset + APPEND_CHUNK_SIZE);
+    const form = new FormData();
+    form.append("segment_index", String(segmentIndex));
+    form.append("media", new Blob([new Uint8Array(chunk)], { type: mimeType }));
+    const appendRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/${mediaId}/append`, {
+      method: "POST",
+      headers: browserLikeHeaders(accessToken),
+      body: form,
+    });
+    if (!appendRes.ok) await throwWithDiagnostics("X media upload (append) failed", appendRes);
+  }
 
-  const finalizeRes = await fetch(`${MEDIA_UPLOAD_BASE}/${mediaId}/finalize`, {
+  const finalizeRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/${mediaId}/finalize`, {
     method: "POST",
     headers: browserLikeHeaders(accessToken, { "Content-Type": "application/json" }),
   });
   if (!finalizeRes.ok) await throwWithDiagnostics("X media upload (finalize) failed", finalizeRes);
+  const finalizeData = (await finalizeRes.json()) as {
+    data: { id: string; processing_info?: { state: string; check_after_secs?: number } };
+  };
+
+  // 動画/GIFはX側で非同期に処理されるため、succeeded/failedになるまで待ってから返す
+  if (finalizeData.data.processing_info) {
+    await waitForMediaProcessing(accessToken, mediaId, finalizeData.data.processing_info);
+  }
 
   return mediaId;
+}
+
+async function waitForMediaProcessing(
+  accessToken: string,
+  mediaId: string,
+  initialInfo: { state: string; check_after_secs?: number; error?: { message: string } },
+): Promise<void> {
+  let info = initialInfo;
+  const deadline = Date.now() + STATUS_POLL_TIMEOUT_MS;
+
+  while (info.state === "pending" || info.state === "in_progress") {
+    if (Date.now() > deadline) throw new Error("X media upload timed out (動画の処理待ちがタイムアウトしました)");
+    await new Promise((resolve) => setTimeout(resolve, (info.check_after_secs ?? 3) * 1000));
+
+    const statusRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/${mediaId}/status`, {
+      method: "GET",
+      headers: browserLikeHeaders(accessToken),
+    });
+    if (!statusRes.ok) await throwWithDiagnostics("X media upload (status) failed", statusRes);
+    const statusData = (await statusRes.json()) as {
+      data: { processing_info?: { state: string; check_after_secs?: number; error?: { message: string } } };
+    };
+    if (!statusData.data.processing_info) return;
+    info = statusData.data.processing_info;
+    if (info.state === "failed") {
+      throw new Error(`X media processing failed: ${info.error?.message ?? "unknown error"}`);
+    }
+  }
 }
 
 export function guessMimeType(url: string): string {
@@ -144,6 +219,9 @@ export function guessMimeType(url: string): string {
     case "png": return "image/png";
     case "gif": return "image/gif";
     case "webp": return "image/webp";
+    case "mp4": return "video/mp4";
+    case "mov": return "video/quicktime";
+    case "webm": return "video/webm";
     case "jpg":
     case "jpeg":
     default: return "image/jpeg";
@@ -168,7 +246,7 @@ export async function postTweet(params: {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`X post failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwWithDiagnostics("X post failed", res);
   const data = (await res.json()) as { data: { id: string; text: string } };
   return data.data;
 }
@@ -182,7 +260,7 @@ export async function repost(params: { accessToken: string; userId: string; twee
     },
     body: JSON.stringify({ tweet_id: params.tweetId }),
   });
-  if (!res.ok) throw new Error(`X repost failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwWithDiagnostics("X repost failed", res);
   return res.json();
 }
 
@@ -195,7 +273,7 @@ export async function getOwnTweetsWithMetrics(params: { accessToken: string; use
   if (params.endTime) url.searchParams.set("end_time", params.endTime);
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${params.accessToken}` } });
-  if (!res.ok) throw new Error(`X tweets fetch failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwWithDiagnostics("X tweets fetch failed", res);
   const data = (await res.json()) as {
     data?: Array<{
       id: string;
