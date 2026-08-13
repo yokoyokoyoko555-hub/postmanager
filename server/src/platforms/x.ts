@@ -143,7 +143,7 @@ function mediaCategoryFor(mimeType: string): "tweet_image" | "tweet_gif" | "twee
 
 // Xの公式上限。これを超えると分かりやすいエラーではなく謎の503が返ってくることが
 // 実際に確認されているため、リクエストを送る前にこちら側で弾く
-const MAX_BYTES: Record<"tweet_image" | "tweet_gif" | "tweet_video", number> = {
+export const MAX_BYTES: Record<"tweet_image" | "tweet_gif" | "tweet_video", number> = {
   tweet_image: 5 * 1024 * 1024,
   tweet_gif: 15 * 1024 * 1024,
   tweet_video: 512 * 1024 * 1024,

@@ -1,4 +1,5 @@
 import type { Account, Draft } from "@prisma/client";
+import { compressImageIfNeeded } from "./imageCompress.js";
 import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
 import { prisma } from "./prisma.js";
@@ -24,9 +25,12 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
     for (const url of draft.mediaUrls) {
       const mediaRes = await fetch(url);
       if (!mediaRes.ok) throw new Error(`画像/動画の取得に失敗しました(${mediaRes.status}): ${url}`);
-      const buf = Buffer.from(await mediaRes.arrayBuffer());
-      console.log("fetched media for upload", { url, bytes: buf.length, contentType: mediaRes.headers.get("content-type") });
-      mediaIds.push(await x.uploadMedia(accessToken, buf, x.guessMimeType(url)));
+      const rawBuf = Buffer.from(await mediaRes.arrayBuffer());
+      console.log("fetched media for upload", { url, bytes: rawBuf.length, contentType: mediaRes.headers.get("content-type") });
+
+      // Xの公式アプリと同様、上限を超える画像は投稿前に自動で圧縮する(JPEG/PNG/WEBPのみ対象。GIF/動画は対象外)
+      const { buffer: buf, mimeType } = await compressImageIfNeeded(rawBuf, x.guessMimeType(url), x.MAX_BYTES.tweet_image);
+      mediaIds.push(await x.uploadMedia(accessToken, buf, mimeType));
     }
     const result = await x.postTweet({
       accessToken,
