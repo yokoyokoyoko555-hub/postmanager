@@ -141,6 +141,19 @@ function mediaCategoryFor(mimeType: string): "tweet_image" | "tweet_gif" | "twee
   return "tweet_image";
 }
 
+// Xの公式上限。これを超えると分かりやすいエラーではなく謎の503が返ってくることが
+// 実際に確認されているため、リクエストを送る前にこちら側で弾く
+const MAX_BYTES: Record<"tweet_image" | "tweet_gif" | "tweet_video", number> = {
+  tweet_image: 5 * 1024 * 1024,
+  tweet_gif: 15 * 1024 * 1024,
+  tweet_video: 512 * 1024 * 1024,
+};
+const MAX_BYTES_LABEL: Record<"tweet_image" | "tweet_gif" | "tweet_video", string> = {
+  tweet_image: "5MB",
+  tweet_gif: "15MB",
+  tweet_video: "512MB",
+};
+
 const APPEND_CHUNK_SIZE = 4 * 1024 * 1024; // 4MB。動画は1回のAPPENDに収まらないことがあるため分割する
 const STATUS_POLL_TIMEOUT_MS = 90_000; // 動画処理の完了待ちの上限(これを超えたら諦めてエラーにする)
 
@@ -149,6 +162,14 @@ const STATUS_POLL_TIMEOUT_MS = 90_000; // 動画処理の完了待ちの上限(�
 export async function uploadMedia(accessToken: string, mediaBuffer: Buffer, mimeType: string) {
   const category = mediaCategoryFor(mimeType);
   console.log("X media upload starting", { mimeType, category, totalBytes: mediaBuffer.length });
+
+  const maxBytes = MAX_BYTES[category];
+  if (mediaBuffer.length > maxBytes) {
+    const mb = (mediaBuffer.length / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `画像/動画のファイルサイズが大きすぎます(${mb}MB)。X側の上限(${category === "tweet_image" ? "画像" : category === "tweet_gif" ? "GIF" : "動画"}: ${MAX_BYTES_LABEL[category]})以下にしてください。`,
+    );
+  }
 
   const initRes = await fetchWithRetry(`${MEDIA_UPLOAD_BASE}/initialize`, {
     method: "POST",

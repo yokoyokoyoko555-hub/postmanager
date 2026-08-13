@@ -89,6 +89,18 @@ function isVideoUrl(url: string): boolean {
   return !!ext && VIDEO_EXTENSIONS.includes(ext);
 }
 
+// Xの上限を超えるファイルは謎の503エラーになるため、アップロード前に弾く
+function mediaSizeLimitBytes(file: File): number {
+  if (file.type === "image/gif") return 15 * 1024 * 1024;
+  if (file.type.startsWith("video/")) return 512 * 1024 * 1024;
+  return 5 * 1024 * 1024;
+}
+function mediaSizeLimitLabel(file: File): string {
+  if (file.type === "image/gif") return "GIFは15MB";
+  if (file.type.startsWith("video/")) return "動画は512MB";
+  return "画像は5MB";
+}
+
 function MediaThumb({ url, size = 48 }: { url: string; size?: number }) {
   const style = { width: size, height: size, border: `1px solid ${HAIRLINE}` };
   return isVideoUrl(url) ? (
@@ -352,10 +364,19 @@ function DraftEditorModal({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    const oversized = files.filter((f) => f.size > mediaSizeLimitBytes(f));
+    if (oversized.length > 0) {
+      alert(oversized.map((f) => `「${f.name}」が大きすぎます(${mediaSizeLimitLabel(f)}まで)`).join("\n"));
+    }
+    const validFiles = files.filter((f) => f.size <= mediaSizeLimitBytes(f));
+    if (validFiles.length === 0) {
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const urls: string[] = [];
-      for (const file of files) {
+      for (const file of validFiles) {
         urls.push(await uploadImageToS3(file));
       }
       setMediaUrls((prev) => [...prev, ...urls]);
@@ -584,10 +605,19 @@ function TemplateEditorModal({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    const oversized = files.filter((f) => f.size > mediaSizeLimitBytes(f));
+    if (oversized.length > 0) {
+      alert(oversized.map((f) => `「${f.name}」が大きすぎます(${mediaSizeLimitLabel(f)}まで)`).join("\n"));
+    }
+    const validFiles = files.filter((f) => f.size <= mediaSizeLimitBytes(f));
+    if (validFiles.length === 0) {
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     try {
       const urls: string[] = [];
-      for (const file of files) {
+      for (const file of validFiles) {
         urls.push(await uploadImageToS3(file));
       }
       setMediaUrls((prev) => [...prev, ...urls]);

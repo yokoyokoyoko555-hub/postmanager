@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { ah } from "../lib/asyncHandler.js";
 import { prisma } from "../lib/prisma.js";
 import { createState, consumeState } from "../lib/oauthState.js";
 import * as x from "../platforms/x.js";
@@ -7,7 +9,11 @@ import * as instagram from "../platforms/instagram.js";
 
 const router = Router();
 
-router.get("/", async (_req, res) => {
+function isRecordNotFound(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025";
+}
+
+router.get("/", ah(async (_req, res) => {
   const accounts = await prisma.account.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] });
   res.json(
     accounts.map((a) => ({
@@ -20,7 +26,7 @@ router.get("/", async (_req, res) => {
       createdAt: a.createdAt,
     })),
   );
-});
+}));
 
 const createAccountSchema = z.object({
   platform: z.enum(["x", "instagram"]),
@@ -29,7 +35,7 @@ const createAccountSchema = z.object({
 });
 
 // OAuth連携前でも、店舗側で先にアカウント枠だけ登録できるようにする
-router.post("/", async (req, res) => {
+router.post("/", ah(async (req, res) => {
   const parsed = createAccountSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const maxOrder = await prisma.account.aggregate({ _max: { sortOrder: true } });
@@ -37,12 +43,12 @@ router.post("/", async (req, res) => {
     data: { ...parsed.data, sortOrder: (maxOrder._max.sortOrder ?? 0) + 1 },
   });
   res.status(201).json(account);
-});
+}));
 
 const reorderSchema = z.object({ orderedIds: z.array(z.string().min(1)) });
 
 // アカウントの並び順を丸ごと入れ替える(orderedIdsの並び=新しい表示順)
-router.put("/reorder", async (req, res) => {
+router.put("/reorder", ah(async (req, res) => {
   const parsed = reorderSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   await prisma.$transaction(
@@ -62,12 +68,16 @@ router.put("/reorder", async (req, res) => {
       createdAt: a.createdAt,
     })),
   );
-});
+}));
 
-router.delete("/:id", async (req, res) => {
-  await prisma.account.delete({ where: { id: req.params.id } });
+router.delete("/:id", ah(async (req, res) => {
+  try {
+    await prisma.account.delete({ where: { id: req.params.id } });
+  } catch (e) {
+    if (!isRecordNotFound(e)) throw e;
+  }
   res.status(204).end();
-});
+}));
 
 // --- X OAuth (PKCE) ---
 router.get("/x/oauth/start", (_req, res) => {

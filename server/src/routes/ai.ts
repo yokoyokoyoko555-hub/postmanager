@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { generateJson } from "../lib/aiProvider.js";
+import { ah } from "../lib/asyncHandler.js";
 import { generateAndSaveDailyReport, generateDailyReportsForAllAccounts } from "../lib/dailyReport.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -20,7 +21,7 @@ const generateSchema = z.object({
   provider: z.enum(["claude", "openai"]).default("claude"),
 });
 
-router.post("/generate-draft", async (req, res) => {
+router.post("/generate-draft", ah(async (req, res) => {
   const parsed = generateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { accountId, input, tone, provider } = parsed.data;
@@ -57,7 +58,7 @@ ${TONE_LABELS[tone]}
   } catch (e) {
     res.status(502).json({ error: "AI生成に失敗しました", detail: (e as Error).message });
   }
-});
+}));
 
 const dailyReportSchema = z.object({
   accountId: z.string().min(1).optional(),
@@ -65,7 +66,7 @@ const dailyReportSchema = z.object({
 });
 
 // accountIdを指定すればそのアカウントのみ、省略すれば全アカウント分をまとめて生成する
-router.post("/daily-report", async (req, res) => {
+router.post("/daily-report", ah(async (req, res) => {
   const parsed = dailyReportSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { accountId, provider } = parsed.data;
@@ -83,9 +84,9 @@ router.post("/daily-report", async (req, res) => {
     console.error("[ai] daily-report failed", e);
     res.status(502).json({ error: "レポート生成に失敗しました", detail: (e as Error).message });
   }
-});
+}));
 
-router.get("/daily-report/history", async (req, res) => {
+router.get("/daily-report/history", ah(async (req, res) => {
   const { accountId } = req.query as { accountId?: string };
   const reports = await prisma.dailyReport.findMany({
     where: accountId ? { accountId } : undefined,
@@ -94,6 +95,6 @@ router.get("/daily-report/history", async (req, res) => {
     include: { account: true },
   });
   res.json(reports);
-});
+}));
 
 export default router;

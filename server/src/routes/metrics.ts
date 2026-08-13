@@ -1,10 +1,11 @@
 import { Router } from "express";
+import { ah } from "../lib/asyncHandler.js";
 import { latestPostMetricsByPost } from "../lib/metrics.js";
 import { prisma } from "../lib/prisma.js";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+router.get("/", ah(async (req, res) => {
   const { accountId } = req.query as { accountId?: string };
   if (!accountId) return res.status(400).json({ error: "accountId is required" });
 
@@ -44,6 +45,6 @@ router.get("/", async (req, res) => {
     accountMetric,
     postMetrics: postMetrics.map((m) => ({ ...m, text: textByPostId.get(m.sourcePostId ?? m.platformPostId) ?? null })),
   });
-});
+}));
 
 export default router;
