@@ -19,14 +19,14 @@ function s3Client() {
   return client;
 }
 
-export async function createPresignedUpload(params: { fileName: string; contentType: string }) {
+export async function createPresignedUpload(params: { fileName: string; contentType: string; folder?: "drafts" | "templates" }) {
   const bucket = process.env.S3_BUCKET_NAME;
   const publicBase = process.env.S3_PUBLIC_BASE_URL;
   if (!bucket) throw new Error("S3_BUCKET_NAME is not configured");
   if (!publicBase) throw new Error("S3_PUBLIC_BASE_URL is not configured");
 
   const ext = params.fileName.includes(".") ? params.fileName.split(".").pop() : "jpg";
-  const key = `drafts/${crypto.randomUUID()}.${ext}`;
+  const key = `${params.folder ?? "drafts"}/${crypto.randomUUID()}.${ext}`;
 
   // 2023年4月以降に作成されたS3バケットはデフォルトでACLが無効化されているため、
   // オブジェクト単位のACL指定はしない。公開読み取りはバケットポリシーで許可する運用にする。

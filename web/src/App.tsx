@@ -618,7 +618,7 @@ function TemplateEditorModal({
     try {
       const urls: string[] = [];
       for (const file of validFiles) {
-        urls.push(await uploadImageToS3(file));
+        urls.push(await uploadImageToS3(file, "templates"));
       }
       setMediaUrls((prev) => [...prev, ...urls]);
     } catch (err) {

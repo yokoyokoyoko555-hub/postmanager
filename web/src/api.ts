@@ -68,7 +68,7 @@ export const api = {
     get: (accountId: string) => request<AccountAnalytics>(`/metrics?accountId=${accountId}`),
   },
   media: {
-    presign: (data: { fileName: string; contentType: string }) =>
+    presign: (data: { fileName: string; contentType: string; folder?: "drafts" | "templates" }) =>
       request<{ uploadUrl: string; publicUrl: string; key: string }>("/media/presign", {
         method: "POST",
         body: JSON.stringify(data),
@@ -76,8 +76,8 @@ export const api = {
   },
 };
 
-export async function uploadImageToS3(file: File): Promise<string> {
-  const { uploadUrl, publicUrl } = await api.media.presign({ fileName: file.name, contentType: file.type });
+export async function uploadImageToS3(file: File, folder: "drafts" | "templates" = "drafts"): Promise<string> {
+  const { uploadUrl, publicUrl } = await api.media.presign({ fileName: file.name, contentType: file.type, folder });
   const putRes = await fetch(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": file.type },

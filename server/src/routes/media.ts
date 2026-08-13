@@ -7,6 +7,7 @@ const router = Router();
 const presignSchema = z.object({
   fileName: z.string().min(1),
   contentType: z.string().min(1),
+  folder: z.enum(["drafts", "templates"]).default("drafts"),
 });
 
 router.post("/presign", async (req, res) => {
