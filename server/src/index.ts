@@ -5,6 +5,7 @@ import cors from "cors";
 import express from "express";
 import { basicAuth } from "./lib/basicAuth.js";
 import accountsRouter from "./routes/accounts.js";
+import adminRouter from "./routes/admin.js";
 import aiRouter from "./routes/ai.js";
 import draftsRouter from "./routes/drafts.js";
 import mediaRouter from "./routes/media.js";
@@ -35,6 +36,7 @@ app.use("/api/drafts", draftsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/metrics", metricsRouter);
+app.use("/api/admin", adminRouter);
 
 // 本番ビルド時はReactの静的ファイルを配信する
 if (process.env.NODE_ENV === "production") {
