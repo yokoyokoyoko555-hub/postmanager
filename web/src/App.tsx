@@ -694,7 +694,7 @@ function TemplateEditorModal({
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 function RoutineEditorModal({
-  open, onClose, onSave, routine, accounts, templates, defaultAccountId,
+  open, onClose, onSave, routine, accounts, templates, defaultAccountId, seedTemplate,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: {
@@ -702,6 +702,7 @@ function RoutineEditorModal({
     daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
   }) => void;
   routine: RoutinePost | null; accounts: Account[]; templates: Template[]; defaultAccountId: string;
+  seedTemplate?: Template | null;
 }) {
   const [accountId, setAccountId] = useState(routine?.accountId || defaultAccountId);
   const [templateId, setTemplateId] = useState<string | null>(routine?.templateId ?? null);
@@ -720,10 +721,23 @@ function RoutineEditorModal({
   const [endDay, setEndDay] = useState(routine?.endDate ? Number(routine.endDate.slice(8, 10)) : defaults.day);
 
   useEffect(() => {
-    setAccountId(routine?.accountId || defaultAccountId);
-    setTemplateId(routine?.templateId ?? null);
-    setText(routine?.text || "");
-    setMediaUrls(routine?.mediaUrls || []);
+    if (routine) {
+      setAccountId(routine.accountId);
+      setTemplateId(routine.templateId ?? null);
+      setText(routine.text);
+      setMediaUrls(routine.mediaUrls);
+    } else if (seedTemplate) {
+      // テンプレート一覧の「ルーティーン化する」から開いた場合、そのテンプレートで連動させた状態で開始する
+      setAccountId(seedTemplate.accountId || defaultAccountId);
+      setTemplateId(seedTemplate.id);
+      setText(seedTemplate.body);
+      setMediaUrls(seedTemplate.mediaUrls);
+    } else {
+      setAccountId(defaultAccountId);
+      setTemplateId(null);
+      setText("");
+      setMediaUrls([]);
+    }
     setFrequency(routine?.frequency || "weekly");
     setDaysOfWeek(routine?.daysOfWeek || []);
     setHour(routine?.hour ?? 15);
@@ -734,7 +748,7 @@ function RoutineEditorModal({
     setEndYear(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : d.year);
     setEndMonth(routine?.endDate ? Number(routine.endDate.slice(5, 7)) : d.month);
     setEndDay(routine?.endDate ? Number(routine.endDate.slice(8, 10)) : d.day);
-  }, [routine, open, defaultAccountId]);
+  }, [routine, seedTemplate, open, defaultAccountId]);
 
   if (!open) return null;
 
@@ -1102,6 +1116,7 @@ export default function App() {
   const [draftInitialAccountId, setDraftInitialAccountId] = useState<string | undefined>(undefined);
   const [routineEditorOpen, setRoutineEditorOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<RoutinePost | null>(null);
+  const [routineSeedTemplate, setRoutineSeedTemplate] = useState<Template | null>(null);
 
   const reloadAll = async () => {
     try {
@@ -1277,6 +1292,13 @@ export default function App() {
     }
     setRoutineEditorOpen(false);
     setEditingRoutine(null);
+    setRoutineSeedTemplate(null);
+  };
+
+  const createRoutineFromTemplate = (t: Template) => {
+    setEditingRoutine(null);
+    setRoutineSeedTemplate(t);
+    setRoutineEditorOpen(true);
   };
 
   const deleteRoutine = async (r: RoutinePost) => {
@@ -1639,6 +1661,7 @@ export default function App() {
                       <FileText size={13} /> この内容で下書き作成
                     </button>
                     <div className="flex justify-end gap-1 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                      <button onClick={() => createRoutineFromTemplate(t)} disabled={accounts.length === 0} title="このテンプレートでルーティーンを作成" className="p-1.5 rounded disabled:opacity-40" style={{ color: HOLO_A }}><CalendarClock size={14} /></button>
                       <button onClick={() => { setEditingTemplate(t); setTemplateEditorOpen(true); }} className="p-1.5 rounded" style={{ color: MUTED }}><Pencil size={14} /></button>
                       <button onClick={() => deleteTemplate(t)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
                     </div>
@@ -1885,7 +1908,8 @@ export default function App() {
         accounts={accounts}
         templates={templates}
         defaultAccountId={activeAccountId === "all" ? (accounts[0]?.id ?? "") : activeAccountId}
-        onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); }}
+        seedTemplate={routineSeedTemplate}
+        onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); setRoutineSeedTemplate(null); }}
         onSave={saveRoutine}
       />
     </div>
