@@ -1,7 +1,8 @@
 export type Platform = "x" | "instagram";
 export type DraftStatus = "draft" | "scheduled" | "posted" | "failed";
-export type DraftSource = "manual" | "ai";
+export type DraftSource = "manual" | "ai" | "routine";
 export type PostMode = "post" | "quote" | "repost";
+export type RoutineFrequency = "daily" | "weekly";
 
 export interface Account {
   id: string;
@@ -74,4 +75,18 @@ export interface PostMetricData {
 export interface AccountAnalytics {
   accountMetric: AccountMetricData | null;
   postMetrics: PostMetricData[];
+}
+
+export interface RoutinePost {
+  id: string;
+  accountId: string;
+  text: string;
+  mediaUrls: string[];
+  frequency: RoutineFrequency;
+  daysOfWeek: number[];
+  hour: number;
+  minute: number;
+  active: boolean;
+  lastTriggeredDate: string | null;
+  createdAt: string;
 }

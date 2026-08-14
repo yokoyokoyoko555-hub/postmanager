@@ -10,6 +10,7 @@ import aiRouter from "./routes/ai.js";
 import draftsRouter from "./routes/drafts.js";
 import mediaRouter from "./routes/media.js";
 import metricsRouter from "./routes/metrics.js";
+import routinesRouter from "./routes/routines.js";
 import templatesRouter from "./routes/templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,7 @@ app.use("/api/drafts", draftsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/media", mediaRouter);
 app.use("/api/metrics", metricsRouter);
+app.use("/api/routines", routinesRouter);
 app.use("/api/admin", adminRouter);
 
 // 本番ビルド時はReactの静的ファイルを配信する

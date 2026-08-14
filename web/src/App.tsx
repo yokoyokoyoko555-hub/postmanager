@@ -3,10 +3,10 @@ import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
   PackageCheck, Megaphone, Gem, Menu, TrendingUp, History, RefreshCw,
-  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3, BookmarkPlus, Search
+  ChevronRight, ImagePlus, Link2, AlertTriangle, Camera, Send, CheckCircle2, Repeat, ChevronUp, ChevronDown, BarChart3, BookmarkPlus, Search, CalendarClock, Power
 } from "lucide-react";
 import { api, uploadImageToS3 } from "./api";
-import type { Account, AccountAnalytics, DailyReport, Draft, PostMode, Template } from "./types";
+import type { Account, AccountAnalytics, DailyReport, Draft, PostMode, RoutineFrequency, RoutinePost, Template } from "./types";
 
 const INK = "#0E0F13";
 const PANEL = "#17181F";
@@ -81,6 +81,10 @@ function nowJstParts() {
 
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
 }
 
 const VIDEO_EXTENSIONS = ["mp4", "mov", "webm", "m4v"];
@@ -686,6 +690,167 @@ function TemplateEditorModal({
   );
 }
 
+/* --------------------------------------------------------- ルーティーン編集モーダル --------------------------------------------------------- */
+const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+
+function RoutineEditorModal({
+  open, onClose, onSave, routine, accounts, defaultAccountId,
+}: {
+  open: boolean; onClose: () => void;
+  onSave: (v: {
+    accountId: string; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean;
+  }) => void;
+  routine: RoutinePost | null; accounts: Account[]; defaultAccountId: string;
+}) {
+  const [accountId, setAccountId] = useState(routine?.accountId || defaultAccountId);
+  const [text, setText] = useState(routine?.text || "");
+  const [mediaUrls, setMediaUrls] = useState<string[]>(routine?.mediaUrls || []);
+  const [uploading, setUploading] = useState(false);
+  const [frequency, setFrequency] = useState<RoutineFrequency>(routine?.frequency || "weekly");
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(routine?.daysOfWeek || []);
+  const [hour, setHour] = useState(routine?.hour ?? 15);
+  const [minute, setMinute] = useState(routine?.minute ?? 0);
+  const [active, setActive] = useState(routine?.active ?? true);
+
+  useEffect(() => {
+    setAccountId(routine?.accountId || defaultAccountId);
+    setText(routine?.text || "");
+    setMediaUrls(routine?.mediaUrls || []);
+    setFrequency(routine?.frequency || "weekly");
+    setDaysOfWeek(routine?.daysOfWeek || []);
+    setHour(routine?.hour ?? 15);
+    setMinute(routine?.minute ?? 0);
+    setActive(routine?.active ?? true);
+  }, [routine, open, defaultAccountId]);
+
+  if (!open) return null;
+
+  const toggleDay = (d: number) => {
+    setDaysOfWeek((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    const oversized = files.filter((f) => f.size > mediaSizeLimitBytes(f));
+    if (oversized.length > 0) {
+      alert(oversized.map((f) => `「${f.name}」が大きすぎます(${mediaSizeLimitLabel(f)}まで)`).join("\n"));
+    }
+    const validFiles = files.filter((f) => f.size <= mediaSizeLimitBytes(f));
+    if (validFiles.length === 0) {
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const file of validFiles) {
+        urls.push(await uploadImageToS3(file, "drafts"));
+      }
+      setMediaUrls((prev) => [...prev, ...urls]);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const canSave = accountId && text.trim() && (frequency === "daily" || daysOfWeek.length > 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+      <div className="w-full max-w-lg rounded-xl max-h-[90vh] overflow-y-auto" style={{ background: PANEL, border: `1px solid ${HAIRLINE}` }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${HAIRLINE}` }}>
+          <h3 style={{ fontFamily: displayFont, color: PAPER }} className="text-base uppercase">{routine ? "ルーティーン編集" : "新規ルーティーン"}</h3>
+          <button onClick={onClose} style={{ color: MUTED }}><X size={18} /></button>
+        </div>
+        <div className="p-5 flex flex-col gap-4">
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>アカウント</label>
+            <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.displayName} ({a.handle})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>繰り返し</label>
+            <div className="grid grid-cols-2 gap-1 mt-1">
+              {([{ id: "daily", label: "毎日" }, { id: "weekly", label: "曜日指定" }] as const).map((f) => {
+                const activeF = frequency === f.id;
+                return (
+                  <button key={f.id} onClick={() => setFrequency(f.id)} className="px-2 py-2 rounded text-xs" style={{ background: activeF ? "rgba(111,214,201,0.15)" : CARD, color: activeF ? HOLO_A : MUTED, border: `1px solid ${activeF ? HOLO_A : HAIRLINE}` }}>
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {frequency === "weekly" && (
+            <div>
+              <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>曜日(複数選択可)</label>
+              <div className="flex gap-1 mt-1">
+                {WEEKDAY_LABELS.map((label, d) => {
+                  const activeD = daysOfWeek.includes(d);
+                  return (
+                    <button key={d} onClick={() => toggleDay(d)} className="flex-1 py-2 rounded text-xs" style={{ background: activeD ? "rgba(203,162,78,0.15)" : CARD, color: activeD ? GOLD : MUTED, border: `1px solid ${activeD ? GOLD_SOFT : HAIRLINE}` }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <ScheduleSelect label="時" value={hour} onChange={setHour} options={Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${pad2(i)}時` }))} />
+            <ScheduleSelect label="分" value={minute} onChange={setMinute} options={Array.from({ length: 60 }, (_, i) => ({ value: i, label: `${pad2(i)}分` }))} />
+          </div>
+          <p className="text-[11px]" style={{ color: MUTED }}>日本時間(JST)で毎回この時刻以降に自動で予約投稿が作成されます。</p>
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>本文</label>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+          </div>
+          <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意)</label>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {mediaUrls.map((url) => (
+                <div key={url} className="relative">
+                  <MediaThumb url={url} size={64} />
+                  <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
+              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+                {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                <span className="text-[9px]">ライブラリ</span>
+                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
+              </label>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            有効にする(オフにすると一時停止できます)
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+          <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
+          <button
+            onClick={() => { if (canSave) onSave({ accountId, text, mediaUrls, frequency, daysOfWeek: frequency === "daily" ? [] : daysOfWeek, hour, minute, active }); }}
+            disabled={!canSave}
+            className="px-4 py-2 rounded text-sm font-medium disabled:opacity-40"
+            style={{ background: GOLD, color: INK }}
+          >
+            保存する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------------------------------- アカウント追加モーダル --------------------------------------------------------- */
 function AccountEditorModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (v: { platform: "x" | "instagram"; displayName: string; handle: string }) => void }) {
   const [platform, setPlatform] = useState<"x" | "instagram">("x");
@@ -839,6 +1004,7 @@ export default function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeAccountId, setActiveAccountId] = useState(() => localStorage.getItem("xpm:activeAccountId") || "all");
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [routines, setRoutines] = useState<RoutinePost[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -867,13 +1033,15 @@ export default function App() {
   const [draftInitialText, setDraftInitialText] = useState<string | undefined>(undefined);
   const [draftInitialMediaUrls, setDraftInitialMediaUrls] = useState<string[] | undefined>(undefined);
   const [draftInitialAccountId, setDraftInitialAccountId] = useState<string | undefined>(undefined);
+  const [routineEditorOpen, setRoutineEditorOpen] = useState(false);
+  const [editingRoutine, setEditingRoutine] = useState<RoutinePost | null>(null);
 
   const reloadAll = async () => {
     try {
-      const [a, t, d, r] = await Promise.all([
-        api.accounts.list(), api.templates.list(), api.drafts.list(), api.ai.dailyReportHistory(),
+      const [a, t, d, r, rt] = await Promise.all([
+        api.accounts.list(), api.templates.list(), api.drafts.list(), api.ai.dailyReportHistory(), api.routines.list(),
       ]);
-      setAccounts(a); setTemplates(t); setDrafts(d); setReports(r);
+      setAccounts(a); setTemplates(t); setDrafts(d); setReports(r); setRoutines(rt);
     } catch (e) {
       setLoadError((e as Error).message);
     } finally {
@@ -1029,6 +1197,35 @@ export default function App() {
     setTemplates((prev) => prev.filter((x) => x.id !== t.id));
   };
 
+  const saveRoutine = async (v: {
+    accountId: string; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean;
+  }) => {
+    if (editingRoutine) {
+      const updated = await api.routines.update(editingRoutine.id, v);
+      setRoutines((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    } else {
+      const created = await api.routines.create(v);
+      setRoutines((prev) => [created, ...prev]);
+    }
+    setRoutineEditorOpen(false);
+    setEditingRoutine(null);
+  };
+
+  const deleteRoutine = async (r: RoutinePost) => {
+    if (!confirm("このルーティーンを削除しますか?")) return;
+    await api.routines.remove(r.id);
+    setRoutines((prev) => prev.filter((x) => x.id !== r.id));
+  };
+
+  const toggleRoutineActive = async (r: RoutinePost) => {
+    const updated = await api.routines.update(r.id, {
+      accountId: r.accountId, text: r.text, mediaUrls: r.mediaUrls, frequency: r.frequency,
+      daysOfWeek: r.daysOfWeek, hour: r.hour, minute: r.minute, active: !r.active,
+    });
+    setRoutines((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+  };
+
   const saveTextAsTemplate = async (body: string, mediaUrls: string[] = [], accountId: string | null = null) => {
     if (!body.trim()) return;
     const title = window.prompt("テンプレート名を入力してください");
@@ -1117,6 +1314,7 @@ export default function App() {
     { id: "dashboard", label: "ダッシュボード", icon: TrendingUp },
     { id: "drafts", label: "下書き", icon: FileText },
     { id: "scheduled", label: "予約投稿", icon: Calendar },
+    { id: "routines", label: "ルーティーン", icon: CalendarClock },
     { id: "posted", label: "投稿履歴", icon: CheckCircle2 },
     { id: "failed", label: "失敗", icon: AlertTriangle },
     { id: "templates", label: "テンプレート", icon: Layers },
@@ -1207,7 +1405,7 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {tab !== "dashboard" && tab !== "reports" && tab !== "accounts" && accounts.length > 0 && (
+            {tab !== "dashboard" && tab !== "reports" && tab !== "accounts" && tab !== "routines" && accounts.length > 0 && (
               <button onClick={() => setAiOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}>
                 <Sparkles size={14} /> <span className="hidden xs:inline">AI生成</span>
               </button>
@@ -1220,6 +1418,11 @@ export default function App() {
             {tab === "accounts" && (
               <button onClick={() => setAccountEditorOpen(true)} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
                 <Plus size={14} /> <span className="hidden xs:inline">アカウント追加</span>
+              </button>
+            )}
+            {tab === "routines" && accounts.length > 0 && (
+              <button onClick={() => { setEditingRoutine(null); setRoutineEditorOpen(true); }} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded text-xs sm:text-sm font-medium whitespace-nowrap" style={{ background: GOLD, color: INK }}>
+                <Plus size={14} /> <span className="hidden xs:inline">新規ルーティーン</span>
               </button>
             )}
             {(tab === "drafts" || tab === "scheduled") && accounts.length > 0 && (
@@ -1415,6 +1618,46 @@ export default function App() {
                 </div>
               );
             })()
+          ) : tab === "routines" ? (
+            routines.length === 0 ? (
+              <EmptyState text="ルーティーンはまだありません。「新規ルーティーン」から、毎週・毎日の定期投稿を設定できます。" />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {routines.map((r) => {
+                  const scheduleLabel = r.frequency === "daily"
+                    ? `毎日 ${pad2(r.hour)}:${pad2(r.minute)}`
+                    : `毎週 ${r.daysOfWeek.map((d) => WEEKDAY_LABELS[d]).join("・")} ${pad2(r.hour)}:${pad2(r.minute)}`;
+                  return (
+                    <FoilFrame key={r.id} holo>
+                      <div className="p-4 flex flex-col gap-3 h-full">
+                        <div className="flex items-center justify-between gap-2">
+                          <span style={{ fontFamily: monoFont, fontSize: 11, color: MUTED }}>{accountOf(r.accountId)?.handle ?? "未割当"}</span>
+                          <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded flex items-center gap-1" style={{ color: r.active ? GREEN : MUTED, fontFamily: monoFont, border: `1px solid ${HAIRLINE}` }}>
+                            <CalendarClock size={10} /> {r.active ? "有効" : "停止中"}
+                          </span>
+                        </div>
+                        <div className="text-sm" style={{ color: GOLD, fontFamily: monoFont }}>{scheduleLabel}</div>
+                        <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{r.text}</p>
+                        {r.mediaUrls.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap">
+                            {r.mediaUrls.map((url) => <MediaThumb key={url} url={url} />)}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
+                          <button onClick={() => toggleRoutineActive(r)} title={r.active ? "一時停止する" : "再開する"} className="p-1.5 rounded hover:opacity-80 transition" style={{ color: r.active ? GREEN : MUTED }}>
+                            <Power size={14} />
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => { setEditingRoutine(r); setRoutineEditorOpen(true); }} className="p-1.5 rounded" style={{ color: MUTED }}><Pencil size={14} /></button>
+                            <button onClick={() => deleteRoutine(r)} className="p-1.5 rounded" style={{ color: RED }}><Trash2 size={14} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    </FoilFrame>
+                  );
+                })}
+              </div>
+            )
           ) : tab === "accounts" ? (
             accounts.length === 0 ? (
               <EmptyState text="アカウントがまだ登録されていません。右上の「アカウント追加」から登録しましょう。" />
@@ -1559,6 +1802,14 @@ export default function App() {
       />
       <AccountEditorModal open={accountEditorOpen} onClose={() => setAccountEditorOpen(false)} onSave={saveAccount} />
       <AIGenerateModal open={aiOpen} accounts={accounts} defaultAccountId={activeAccountId === "all" ? accounts[0]?.id : activeAccountId} onClose={() => setAiOpen(false)} onAdopt={adoptAIVariant} />
+      <RoutineEditorModal
+        open={routineEditorOpen}
+        routine={editingRoutine}
+        accounts={accounts}
+        defaultAccountId={activeAccountId === "all" ? (accounts[0]?.id ?? "") : activeAccountId}
+        onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); }}
+        onSave={saveRoutine}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Account, AccountAnalytics, DailyReport, Draft, Template } from "./types";
+import type { Account, AccountAnalytics, DailyReport, Draft, RoutineFrequency, RoutinePost, Template } from "./types";
 
 const API_BASE = (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_BASE_URL || "/api";
 
@@ -66,6 +66,18 @@ export const api = {
   },
   metrics: {
     get: (accountId: string) => request<AccountAnalytics>(`/metrics?accountId=${accountId}`),
+  },
+  routines: {
+    list: (accountId?: string) => request<RoutinePost[]>(`/routines${accountId ? `?accountId=${accountId}` : ""}`),
+    create: (data: {
+      accountId: string; text: string; mediaUrls?: string[]; frequency: RoutineFrequency;
+      daysOfWeek: number[]; hour: number; minute: number; active?: boolean;
+    }) => request<RoutinePost>("/routines", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: {
+      accountId: string; text: string; mediaUrls?: string[]; frequency: RoutineFrequency;
+      daysOfWeek: number[]; hour: number; minute: number; active?: boolean;
+    }) => request<RoutinePost>(`/routines/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    remove: (id: string) => request<null>(`/routines/${id}`, { method: "DELETE" }),
   },
   media: {
     presign: (data: { fileName: string; contentType: string; folder?: "drafts" | "templates" }) =>

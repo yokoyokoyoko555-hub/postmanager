@@ -22,6 +22,12 @@ enum DraftStatus {
 enum DraftSource {
   manual
   ai
+  routine
+}
+
+enum RoutineFrequency {
+  daily
+  weekly
 }
 
 // post: 通常投稿 / quote: 過去投稿への引用リポスト(本文あり) / repost: 過去投稿の無言リポスト(本文なし)
@@ -49,8 +55,31 @@ model Account {
   accountMetrics AccountMetric[]
   dailyReports   DailyReport[]
   templates      Template[]
+  routinePosts   RoutinePost[]
 
   @@unique([platform, handle])
+}
+
+// 「毎週月・木15時」「毎日9時」のように繰り返し投稿するルール。
+// ワーカーが毎分チェックし、条件に合致したら実際のDraft(予約投稿)を生成する。
+// 投稿処理自体は生成されたDraftを既存の予約投稿の仕組みに乗せて実行するため、
+// 二重投稿防止やリトライなどは新たに実装しない。
+model RoutinePost {
+  id                String           @id @default(cuid())
+  accountId         String
+  account           Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  text              String
+  mediaUrls         String[]         @default([])
+  frequency         RoutineFrequency @default(weekly)
+  // frequency=weeklyの場合のみ使用。0=日,1=月,2=火,3=水,4=木,5=金,6=土
+  daysOfWeek        Int[]            @default([])
+  hour              Int
+  minute            Int
+  active            Boolean          @default(true)
+  // その日(JST)にもう発火したかどうかの判定用。同じ日に二重生成しないためのガード
+  lastTriggeredDate DateTime?        @db.Date
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }
 
 model Template {

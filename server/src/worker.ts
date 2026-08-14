@@ -60,6 +60,60 @@ async function runScheduledPosts() {
   }
 }
 
+// 閲覧端末のタイムゾーンに関わらず、日本時間での現在日時を取得する
+function jstNow() {
+  const shifted = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return {
+    dateOnly: new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate())),
+    dayOfWeek: shifted.getUTCDay(), // 0=日,1=月,...6=土
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+  };
+}
+
+// ルーティーン設定を毎分チェックし、条件(曜日・時刻)に合致していて当日まだ発火して
+// いなければ、実際のDraft(予約投稿・scheduledAt=今)を生成する。投稿処理そのものは
+// 直後に走るrunScheduledPostsに任せる(二重投稿防止やリトライを再実装しないため)。
+async function runRoutinePosts() {
+  const { dateOnly, dayOfWeek, hour, minute } = jstNow();
+
+  const routines = await prisma.routinePost.findMany({
+    where: {
+      active: true,
+      OR: [{ lastTriggeredDate: null }, { lastTriggeredDate: { lt: dateOnly } }],
+    },
+    include: { account: true },
+  });
+
+  for (const routine of routines) {
+    const matchesDay = routine.frequency === "daily" || routine.daysOfWeek.includes(dayOfWeek);
+    if (!matchesDay) continue;
+    const pastTriggerTime = hour > routine.hour || (hour === routine.hour && minute >= routine.minute);
+    if (!pastTriggerTime) continue;
+
+    // アトミックに「本日分は発火済み」にできた場合のみ実行する(同時実行での二重生成防止)
+    const claimed = await prisma.routinePost.updateMany({
+      where: { id: routine.id, OR: [{ lastTriggeredDate: null }, { lastTriggeredDate: { lt: dateOnly } }] },
+      data: { lastTriggeredDate: dateOnly },
+    });
+    if (claimed.count === 0) continue;
+
+    const draft = await prisma.draft.create({
+      data: {
+        accountId: routine.accountId,
+        platform: routine.account.platform,
+        text: routine.text,
+        mediaUrls: routine.mediaUrls,
+        source: "routine",
+        postMode: "post",
+        status: "scheduled",
+        scheduledAt: new Date(),
+      },
+    });
+    console.log(`[worker] routine ${routine.id} generated draft ${draft.id}`);
+  }
+}
+
 async function runDailyJob() {
   const results = await generateDailyReportsForAllAccounts();
   for (const r of results) {
@@ -69,7 +123,11 @@ async function runDailyJob() {
 }
 
 cron.schedule("* * * * *", () => {
-  runScheduledPosts().catch((e) => console.error("[worker] runScheduledPosts crashed", e));
+  runRoutinePosts()
+    .catch((e) => console.error("[worker] runRoutinePosts crashed", e))
+    .finally(() => {
+      runScheduledPosts().catch((e) => console.error("[worker] runScheduledPosts crashed", e));
+    });
 });
 
 cron.schedule(
@@ -80,4 +138,4 @@ cron.schedule(
   { timezone: "Asia/Tokyo" },
 );
 
-console.log("[worker] started: scheduled posts every minute, daily report at 11:00 JST");
+console.log("[worker] started: routine/scheduled posts every minute, daily report at 11:00 JST");
