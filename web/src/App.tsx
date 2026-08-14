@@ -694,14 +694,14 @@ function TemplateEditorModal({
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 function RoutineEditorModal({
-  open, onClose, onSave, routine, accounts, templates, defaultAccountId, seedTemplate,
+  open, onClose, onSave, routine, accounts, defaultAccountId, seedTemplate,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: {
     accountId: string; templateId: string | null; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
     daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
   }) => void;
-  routine: RoutinePost | null; accounts: Account[]; templates: Template[]; defaultAccountId: string;
+  routine: RoutinePost | null; accounts: Account[]; defaultAccountId: string;
   seedTemplate?: Template | null;
 }) {
   const [accountId, setAccountId] = useState(routine?.accountId || defaultAccountId);
@@ -756,17 +756,6 @@ function RoutineEditorModal({
     setDaysOfWeek((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   };
 
-  const templatesForAccount = templates.filter((t) => t.accountId === null || t.accountId === accountId);
-
-  const applyTemplate = (id: string) => {
-    setTemplateId(id || null);
-    const t = templates.find((t) => t.id === id);
-    if (t) {
-      setText(t.body);
-      setMediaUrls(t.mediaUrls);
-    }
-  };
-
   const endMaxDay = daysInMonth(endYear, endMonth);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -814,18 +803,11 @@ function RoutineEditorModal({
               ))}
             </select>
           </div>
-          <div>
-            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>テンプレートから作成(任意)</label>
-            <select value={templateId ?? ""} onChange={(e) => applyTemplate(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
-              <option value="">テンプレートを使わない</option>
-              {templatesForAccount.map((t) => <option key={t.id} value={t.id}>{t.accountId ? t.title : `${t.title}(共通)`}</option>)}
-            </select>
-            {templateId && (
-              <p className="text-[11px] mt-1" style={{ color: HOLO_A }}>
-                このルーティーンはテンプレートに連動しています。投稿の都度、そのテンプレートの最新内容が使われます。
-              </p>
-            )}
-          </div>
+          {templateId && (
+            <p className="text-[11px]" style={{ color: HOLO_A }}>
+              このルーティーンはテンプレートに連動しています。投稿の都度、そのテンプレートの最新内容が使われます。
+            </p>
+          )}
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>繰り返し</label>
             <div className="grid grid-cols-2 gap-1 mt-1">
@@ -1906,7 +1888,6 @@ export default function App() {
         open={routineEditorOpen}
         routine={editingRoutine}
         accounts={accounts}
-        templates={templates}
         defaultAccountId={activeAccountId === "all" ? (accounts[0]?.id ?? "") : activeAccountId}
         seedTemplate={routineSeedTemplate}
         onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); setRoutineSeedTemplate(null); }}
