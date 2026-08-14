@@ -1,5 +1,6 @@
 import type { AiProvider } from "./aiProvider.js";
 import { generateJson } from "./aiProvider.js";
+import { sendDailyReportToDiscord } from "./discord.js";
 import { collectMetricsForAccount, latestPostMetricsByPost } from "./metrics.js";
 import { prisma } from "./prisma.js";
 
@@ -103,7 +104,7 @@ ${draftLines}
 
   const reportDate = jstTodayDateOnlyUtc();
 
-  return prisma.dailyReport.upsert({
+  const report = await prisma.dailyReport.upsert({
     where: { reportDate_accountId: { reportDate, accountId } },
     create: {
       reportDate,
@@ -119,6 +120,22 @@ ${draftLines}
     },
     include: { account: true },
   });
+
+  // Discordへの転送は失敗してもレポート生成自体は成功扱いにする
+  try {
+    await sendDailyReportToDiscord({
+      accountName: account.displayName,
+      accountHandle: account.handle,
+      reportDate: report.reportDate,
+      reviewText: report.reviewText,
+      improvementsText: report.improvementsText,
+      nextActionsText: report.nextActionsText,
+    });
+  } catch (e) {
+    console.error(`[dailyReport] Discord webhook failed for ${account.handle}: ${(e as Error).message}`);
+  }
+
+  return report;
 }
 
 export async function generateDailyReportsForAllAccounts(provider: AiProvider = "claude") {
