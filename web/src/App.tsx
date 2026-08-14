@@ -694,16 +694,17 @@ function TemplateEditorModal({
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 function RoutineEditorModal({
-  open, onClose, onSave, routine, accounts, defaultAccountId,
+  open, onClose, onSave, routine, accounts, templates, defaultAccountId,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: {
-    accountId: string; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
-    daysOfWeek: number[]; hour: number; minute: number; active: boolean;
+    accountId: string; templateId: string | null; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
   }) => void;
-  routine: RoutinePost | null; accounts: Account[]; defaultAccountId: string;
+  routine: RoutinePost | null; accounts: Account[]; templates: Template[]; defaultAccountId: string;
 }) {
   const [accountId, setAccountId] = useState(routine?.accountId || defaultAccountId);
+  const [templateId, setTemplateId] = useState<string | null>(routine?.templateId ?? null);
   const [text, setText] = useState(routine?.text || "");
   const [mediaUrls, setMediaUrls] = useState<string[]>(routine?.mediaUrls || []);
   const [uploading, setUploading] = useState(false);
@@ -712,9 +713,15 @@ function RoutineEditorModal({
   const [hour, setHour] = useState(routine?.hour ?? 15);
   const [minute, setMinute] = useState(routine?.minute ?? 0);
   const [active, setActive] = useState(routine?.active ?? true);
+  const defaults = nowJstParts();
+  const [hasEndDate, setHasEndDate] = useState(!!routine?.endDate);
+  const [endYear, setEndYear] = useState(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : defaults.year);
+  const [endMonth, setEndMonth] = useState(routine?.endDate ? Number(routine.endDate.slice(5, 7)) : defaults.month);
+  const [endDay, setEndDay] = useState(routine?.endDate ? Number(routine.endDate.slice(8, 10)) : defaults.day);
 
   useEffect(() => {
     setAccountId(routine?.accountId || defaultAccountId);
+    setTemplateId(routine?.templateId ?? null);
     setText(routine?.text || "");
     setMediaUrls(routine?.mediaUrls || []);
     setFrequency(routine?.frequency || "weekly");
@@ -722,6 +729,11 @@ function RoutineEditorModal({
     setHour(routine?.hour ?? 15);
     setMinute(routine?.minute ?? 0);
     setActive(routine?.active ?? true);
+    setHasEndDate(!!routine?.endDate);
+    const d = nowJstParts();
+    setEndYear(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : d.year);
+    setEndMonth(routine?.endDate ? Number(routine.endDate.slice(5, 7)) : d.month);
+    setEndDay(routine?.endDate ? Number(routine.endDate.slice(8, 10)) : d.day);
   }, [routine, open, defaultAccountId]);
 
   if (!open) return null;
@@ -729,6 +741,19 @@ function RoutineEditorModal({
   const toggleDay = (d: number) => {
     setDaysOfWeek((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   };
+
+  const templatesForAccount = templates.filter((t) => t.accountId === null || t.accountId === accountId);
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id || null);
+    const t = templates.find((t) => t.id === id);
+    if (t) {
+      setText(t.body);
+      setMediaUrls(t.mediaUrls);
+    }
+  };
+
+  const endMaxDay = daysInMonth(endYear, endMonth);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -776,6 +801,18 @@ function RoutineEditorModal({
             </select>
           </div>
           <div>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>テンプレートから作成(任意)</label>
+            <select value={templateId ?? ""} onChange={(e) => applyTemplate(e.target.value)} className="w-full mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}` }}>
+              <option value="">テンプレートを使わない</option>
+              {templatesForAccount.map((t) => <option key={t.id} value={t.id}>{t.accountId ? t.title : `${t.title}(共通)`}</option>)}
+            </select>
+            {templateId && (
+              <p className="text-[11px] mt-1" style={{ color: HOLO_A }}>
+                このルーティーンはテンプレートに連動しています。投稿の都度、そのテンプレートの最新内容が使われます。
+              </p>
+            )}
+          </div>
+          <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>繰り返し</label>
             <div className="grid grid-cols-2 gap-1 mt-1">
               {([{ id: "daily", label: "毎日" }, { id: "weekly", label: "曜日指定" }] as const).map((f) => {
@@ -809,8 +846,30 @@ function RoutineEditorModal({
           </div>
           <p className="text-[11px]" style={{ color: MUTED }}>日本時間(JST)で毎回この時刻以降に自動で予約投稿が作成されます。</p>
           <div>
+            <label className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
+              <input type="checkbox" checked={hasEndDate} onChange={(e) => setHasEndDate(e.target.checked)} />
+              期限を設定する(オフのままなら期限なしで繰り返します)
+            </label>
+            {hasEndDate && (
+              <div className="flex gap-2 mt-2">
+                <ScheduleSelect label="年" value={endYear} onChange={setEndYear} options={[0, 1, 2].map((n) => ({ value: defaults.year + n, label: `${defaults.year + n}年` }))} />
+                <ScheduleSelect label="月" value={endMonth} onChange={setEndMonth} options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` }))} />
+                <ScheduleSelect label="日" value={endDay} onChange={setEndDay} options={Array.from({ length: endMaxDay }, (_, i) => ({ value: i + 1, label: `${i + 1}日` }))} />
+              </div>
+            )}
+          </div>
+          <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>本文</label>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+            {templateId ? (
+              <div className="mt-1 rounded px-3 py-2 text-sm" style={{ background: CARD, border: `1px solid ${HAIRLINE}` }}>
+                <p className="whitespace-pre-wrap" style={{ color: PAPER, fontFamily: bodyFont }}>{text || <span style={{ color: MUTED }}>(テンプレート本文なし)</span>}</p>
+                <button onClick={() => setTemplateId(null)} className="mt-2 flex items-center gap-1 text-[11px]" style={{ color: HOLO_A }}>
+                  <X size={11} /> 連動を解除して直接編集する
+                </button>
+              </div>
+            ) : (
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+            )}
           </div>
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意)</label>
@@ -818,16 +877,20 @@ function RoutineEditorModal({
               {mediaUrls.map((url) => (
                 <div key={url} className="relative">
                   <MediaThumb url={url} size={64} />
-                  <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
-                    <X size={10} />
-                  </button>
+                  {!templateId && (
+                    <button onClick={() => setMediaUrls((prev) => prev.filter((u) => u !== url))} className="absolute -top-1.5 -right-1.5 rounded-full p-0.5" style={{ background: RED, color: INK }}>
+                      <X size={10} />
+                    </button>
+                  )}
                 </div>
               ))}
-              <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
-                {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
-                <span className="text-[9px]">ライブラリ</span>
-                <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
-              </label>
+              {!templateId && (
+                <label className="w-16 h-16 flex flex-col items-center justify-center gap-0.5 rounded cursor-pointer" style={{ border: `1px dashed ${HAIRLINE}`, color: MUTED }}>
+                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                  <span className="text-[9px]">ライブラリ</span>
+                  <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} disabled={uploading} />
+                </label>
+              )}
             </div>
           </div>
           <label className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
@@ -838,7 +901,11 @@ function RoutineEditorModal({
         <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
           <button
-            onClick={() => { if (canSave) onSave({ accountId, text, mediaUrls, frequency, daysOfWeek: frequency === "daily" ? [] : daysOfWeek, hour, minute, active }); }}
+            onClick={() => {
+              if (!canSave) return;
+              const endDate = hasEndDate ? `${endYear}-${pad2(endMonth)}-${pad2(endDay)}` : null;
+              onSave({ accountId, templateId, text, mediaUrls, frequency, daysOfWeek: frequency === "daily" ? [] : daysOfWeek, hour, minute, active, endDate });
+            }}
             disabled={!canSave}
             className="px-4 py-2 rounded text-sm font-medium disabled:opacity-40"
             style={{ background: GOLD, color: INK }}
@@ -1198,8 +1265,8 @@ export default function App() {
   };
 
   const saveRoutine = async (v: {
-    accountId: string; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
-    daysOfWeek: number[]; hour: number; minute: number; active: boolean;
+    accountId: string; templateId: string | null; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
   }) => {
     if (editingRoutine) {
       const updated = await api.routines.update(editingRoutine.id, v);
@@ -1220,8 +1287,8 @@ export default function App() {
 
   const toggleRoutineActive = async (r: RoutinePost) => {
     const updated = await api.routines.update(r.id, {
-      accountId: r.accountId, text: r.text, mediaUrls: r.mediaUrls, frequency: r.frequency,
-      daysOfWeek: r.daysOfWeek, hour: r.hour, minute: r.minute, active: !r.active,
+      accountId: r.accountId, templateId: r.templateId, text: r.text, mediaUrls: r.mediaUrls, frequency: r.frequency,
+      daysOfWeek: r.daysOfWeek, hour: r.hour, minute: r.minute, active: !r.active, endDate: r.endDate,
     });
     setRoutines((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
   };
@@ -1627,16 +1694,26 @@ export default function App() {
                   const scheduleLabel = r.frequency === "daily"
                     ? `毎日 ${pad2(r.hour)}:${pad2(r.minute)}`
                     : `毎週 ${r.daysOfWeek.map((d) => WEEKDAY_LABELS[d]).join("・")} ${pad2(r.hour)}:${pad2(r.minute)}`;
+                  const linkedTemplate = r.templateId ? templates.find((t) => t.id === r.templateId) : null;
+                  const isExpired = r.endDate ? new Date(r.endDate).getTime() < new Date(new Date().toLocaleDateString("sv-SE", { timeZone: JST_TIMEZONE })).getTime() : false;
                   return (
                     <FoilFrame key={r.id} holo>
                       <div className="p-4 flex flex-col gap-3 h-full">
                         <div className="flex items-center justify-between gap-2">
                           <span style={{ fontFamily: monoFont, fontSize: 11, color: MUTED }}>{accountOf(r.accountId)?.handle ?? "未割当"}</span>
-                          <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded flex items-center gap-1" style={{ color: r.active ? GREEN : MUTED, fontFamily: monoFont, border: `1px solid ${HAIRLINE}` }}>
-                            <CalendarClock size={10} /> {r.active ? "有効" : "停止中"}
+                          <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded flex items-center gap-1" style={{ color: isExpired ? RED : r.active ? GREEN : MUTED, fontFamily: monoFont, border: `1px solid ${HAIRLINE}` }}>
+                            <CalendarClock size={10} /> {isExpired ? "期限切れ" : r.active ? "有効" : "停止中"}
                           </span>
                         </div>
                         <div className="text-sm" style={{ color: GOLD, fontFamily: monoFont }}>{scheduleLabel}</div>
+                        {r.endDate && (
+                          <div className="text-[11px]" style={{ color: MUTED }}>期限: {formatDate(r.endDate)}まで</div>
+                        )}
+                        {linkedTemplate && (
+                          <span className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded text-[10px]" style={{ color: HOLO_A, background: "rgba(111,214,201,0.12)", fontFamily: monoFont }}>
+                            <Layers size={10} /> テンプレート連動: {linkedTemplate.title}
+                          </span>
+                        )}
                         <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{r.text}</p>
                         {r.mediaUrls.length > 0 && (
                           <div className="flex gap-1.5 flex-wrap">
@@ -1806,6 +1883,7 @@ export default function App() {
         open={routineEditorOpen}
         routine={editingRoutine}
         accounts={accounts}
+        templates={templates}
         defaultAccountId={activeAccountId === "all" ? (accounts[0]?.id ?? "") : activeAccountId}
         onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); }}
         onSave={saveRoutine}

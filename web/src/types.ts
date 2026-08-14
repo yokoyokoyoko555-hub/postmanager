@@ -80,6 +80,7 @@ export interface AccountAnalytics {
 export interface RoutinePost {
   id: string;
   accountId: string;
+  templateId: string | null;
   text: string;
   mediaUrls: string[];
   frequency: RoutineFrequency;
@@ -87,6 +88,7 @@ export interface RoutinePost {
   hour: number;
   minute: number;
   active: boolean;
+  endDate: string | null;
   lastTriggeredDate: string | null;
   createdAt: string;
 }

@@ -82,10 +82,11 @@ async function runRoutinePosts() {
       active: true,
       OR: [{ lastTriggeredDate: null }, { lastTriggeredDate: { lt: dateOnly } }],
     },
-    include: { account: true },
+    include: { account: true, template: true },
   });
 
   for (const routine of routines) {
+    if (routine.endDate && dateOnly > routine.endDate) continue; // 期限切れ
     const matchesDay = routine.frequency === "daily" || routine.daysOfWeek.includes(dayOfWeek);
     if (!matchesDay) continue;
     const pastTriggerTime = hour > routine.hour || (hour === routine.hour && minute >= routine.minute);
@@ -98,12 +99,17 @@ async function runRoutinePosts() {
     });
     if (claimed.count === 0) continue;
 
+    // テンプレートと連動している場合は、投稿する瞬間の最新のテンプレート内容を使う
+    // (連動先が削除済みならルーティーン側に残っているキャッシュにフォールバック)
+    const text = routine.template?.body ?? routine.text;
+    const mediaUrls = routine.template?.mediaUrls ?? routine.mediaUrls;
+
     const draft = await prisma.draft.create({
       data: {
         accountId: routine.accountId,
         platform: routine.account.platform,
-        text: routine.text,
-        mediaUrls: routine.mediaUrls,
+        text,
+        mediaUrls,
         source: "routine",
         postMode: "post",
         status: "scheduled",

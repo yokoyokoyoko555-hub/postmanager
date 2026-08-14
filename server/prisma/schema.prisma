@@ -68,6 +68,10 @@ model RoutinePost {
   id                String           @id @default(cuid())
   accountId         String
   account           Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // テンプレートと連動している場合、投稿する内容は毎回このテンプレートの最新の本文・画像を
+  // 使う(text/mediaUrlsは連動時の表示用キャッシュ、テンプレート削除時のフォールバック)。
+  templateId        String?
+  template          Template?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
   text              String
   mediaUrls         String[]         @default([])
   frequency         RoutineFrequency @default(weekly)
@@ -76,6 +80,8 @@ model RoutinePost {
   hour              Int
   minute            Int
   active            Boolean          @default(true)
+  // nullなら期限なし。設定した場合、この日(JST)を過ぎたら発火しなくなる
+  endDate           DateTime?        @db.Date
   // その日(JST)にもう発火したかどうかの判定用。同じ日に二重生成しないためのガード
   lastTriggeredDate DateTime?        @db.Date
   createdAt         DateTime         @default(now())
@@ -92,7 +98,8 @@ model Template {
   account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
 
-  drafts Draft[]
+  drafts   Draft[]
+  routines RoutinePost[]
 }
 
 model Draft {
