@@ -105,6 +105,25 @@ function mediaSizeLimitLabel(file: File): string {
   return "画像は5MB";
 }
 
+// 実際に自動置換される差し替え(プレースホルダー)の一覧。増えたらここに追記する。
+const PLACEHOLDERS: { token: string; description: string }[] = [
+  { token: "{日付}", description: "実際に投稿される瞬間の日本時間の日付(例: 8/16(日))に自動で置き換わります" },
+];
+
+function PlaceholderReference() {
+  return (
+    <div className="rounded px-3 py-2 mt-1.5 flex flex-col gap-1" style={{ background: CARD, border: `1px solid ${HAIRLINE}` }}>
+      <span className="text-[10px] uppercase tracking-wide" style={{ color: GOLD, fontFamily: monoFont }}>使える差し替え(プレースホルダー)</span>
+      {PLACEHOLDERS.map((p) => (
+        <span key={p.token} className="text-[11px]" style={{ color: MUTED }}>
+          <span style={{ color: HOLO_A, fontFamily: monoFont }}>{p.token}</span> — {p.description}
+        </span>
+      ))}
+      <span className="text-[11px]" style={{ color: MUTED }}>商品名・URLなどは商品ごとに変わるため自動化されていません。手入力してください。</span>
+    </div>
+  );
+}
+
 function MediaThumb({ url, size = 48 }: { url: string; size?: number }) {
   const style = { width: size, height: size, border: `1px solid ${HAIRLINE}` };
   return isVideoUrl(url) ? (
@@ -656,10 +675,9 @@ function TemplateEditorModal({
             </select>
           </div>
           <div>
-            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>
-              本文 <span style={{ color: HOLO_A }}>{"{商品名}"} {"{URL}"} のように差し替え箇所を波括弧で書けます</span>
-            </label>
+            <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>本文</label>
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} />
+            <PlaceholderReference />
           </div>
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意)</label>
@@ -877,7 +895,10 @@ function RoutineEditorModal({
                 </button>
               </div>
             ) : (
-              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+              <>
+                <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+                <PlaceholderReference />
+              </>
             )}
           </div>
           <div>
