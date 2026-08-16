@@ -1165,6 +1165,8 @@ export default function App() {
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  const visibleRoutines = routines.filter((r) => activeAccountId === "all" || r.accountId === activeAccountId);
+
   const accountOf = (id: string) => accounts.find((a) => a.id === id);
 
   const saveDraft = async (
@@ -1691,11 +1693,11 @@ export default function App() {
               );
             })()
           ) : tab === "routines" ? (
-            routines.length === 0 ? (
-              <EmptyState text="ルーティーンはまだありません。「新規ルーティーン」から、毎週・毎日の定期投稿を設定できます。" />
+            visibleRoutines.length === 0 ? (
+              <EmptyState text={routines.length === 0 ? "ルーティーンはまだありません。「新規ルーティーン」から、毎週・毎日の定期投稿を設定できます。" : "このアカウントのルーティーンはまだありません。"} />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {routines.map((r) => {
+                {visibleRoutines.map((r) => {
                   const scheduleLabel = r.frequency === "daily"
                     ? `毎日 ${pad2(r.hour)}:${pad2(r.minute)}`
                     : `毎週 ${r.daysOfWeek.map((d) => WEEKDAY_LABELS[d]).join("・")} ${pad2(r.hour)}:${pad2(r.minute)}`;
