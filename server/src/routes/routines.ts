@@ -29,6 +29,7 @@ const routineSchema = z.object({
   hour: z.number().int().min(0).max(23),
   minute: z.number().int().min(0).max(59),
   active: z.boolean().default(true),
+  aiVariation: z.boolean().default(false),
   // "YYYY-MM-DD"(JST基準の日付、未指定/nullなら期限なし)
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 }).refine((v) => v.frequency === "daily" || v.daysOfWeek.length > 0, {

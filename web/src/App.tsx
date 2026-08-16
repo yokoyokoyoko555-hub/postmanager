@@ -703,7 +703,7 @@ function RoutineEditorModal({
   open: boolean; onClose: () => void;
   onSave: (v: {
     accountId: string; templateId: string | null; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
-    daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean; aiVariation: boolean; endDate: string | null;
   }) => void;
   routine: RoutinePost | null; accounts: Account[]; defaultAccountId: string;
   seedTemplate?: Template | null;
@@ -719,6 +719,7 @@ function RoutineEditorModal({
   const [hour, setHour] = useState(routine?.hour ?? 15);
   const [minute, setMinute] = useState(routine?.minute ?? 0);
   const [active, setActive] = useState(routine?.active ?? true);
+  const [aiVariation, setAiVariation] = useState(routine?.aiVariation ?? false);
   const defaults = nowJstParts();
   const [hasEndDate, setHasEndDate] = useState(!!routine?.endDate);
   const [endYear, setEndYear] = useState(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : defaults.year);
@@ -754,6 +755,7 @@ function RoutineEditorModal({
     setHour(routine?.hour ?? 15);
     setMinute(routine?.minute ?? 0);
     setActive(routine?.active ?? true);
+    setAiVariation(routine?.aiVariation ?? false);
     setHasEndDate(!!routine?.endDate);
     const d = nowJstParts();
     setEndYear(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : d.year);
@@ -904,6 +906,10 @@ function RoutineEditorModal({
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             有効にする(オフにすると一時停止できます)
           </label>
+          <label className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
+            <input type="checkbox" checked={aiVariation} onChange={(e) => setAiVariation(e.target.checked)} />
+            投稿のたびにAIで語尾・言い回しを変える(同一文面によるX側の重複投稿ブロック対策)
+          </label>
         </div>
         <div className="flex justify-end gap-2 px-5 py-4" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
           <button onClick={onClose} className="px-4 py-2 rounded text-sm" style={{ color: MUTED }}>キャンセル</button>
@@ -911,7 +917,7 @@ function RoutineEditorModal({
             onClick={() => {
               if (!canSave) return;
               const endDate = hasEndDate ? `${endYear}-${pad2(endMonth)}-${pad2(endDay)}` : null;
-              onSave({ accountId, templateId, text, mediaUrls, frequency, daysOfWeek: frequency === "daily" ? [] : daysOfWeek, hour, minute, active, endDate });
+              onSave({ accountId, templateId, text, mediaUrls, frequency, daysOfWeek: frequency === "daily" ? [] : daysOfWeek, hour, minute, active, aiVariation, endDate });
             }}
             disabled={!canSave}
             className="px-4 py-2 rounded text-sm font-medium disabled:opacity-40"
@@ -1302,7 +1308,7 @@ export default function App() {
 
   const saveRoutine = async (v: {
     accountId: string; templateId: string | null; text: string; mediaUrls: string[]; frequency: RoutineFrequency;
-    daysOfWeek: number[]; hour: number; minute: number; active: boolean; endDate: string | null;
+    daysOfWeek: number[]; hour: number; minute: number; active: boolean; aiVariation: boolean; endDate: string | null;
   }) => {
     if (editingRoutine) {
       const updated = await api.routines.update(editingRoutine.id, v);
@@ -1340,7 +1346,7 @@ export default function App() {
   const toggleRoutineActive = async (r: RoutinePost) => {
     const updated = await api.routines.update(r.id, {
       accountId: r.accountId, templateId: r.templateId, text: r.text, mediaUrls: r.mediaUrls, frequency: r.frequency,
-      daysOfWeek: r.daysOfWeek, hour: r.hour, minute: r.minute, active: !r.active, endDate: r.endDate,
+      daysOfWeek: r.daysOfWeek, hour: r.hour, minute: r.minute, active: !r.active, aiVariation: r.aiVariation, endDate: r.endDate,
     });
     setRoutines((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
   };
@@ -1765,6 +1771,11 @@ export default function App() {
                         {linkedTemplate && (
                           <span className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded text-[10px]" style={{ color: HOLO_A, background: "rgba(111,214,201,0.12)", fontFamily: monoFont }}>
                             <Layers size={10} /> テンプレート連動: {linkedTemplate.title}
+                          </span>
+                        )}
+                        {r.aiVariation && (
+                          <span className="inline-flex items-center gap-1 self-start px-1.5 py-0.5 rounded text-[10px]" style={{ color: GOLD, background: "rgba(203,162,78,0.12)", fontFamily: monoFont }}>
+                            <Sparkles size={10} /> AIで毎回言い回しを変更
                           </span>
                         )}
                         <p className="text-xs whitespace-pre-wrap flex-1" style={{ color: MUTED }}>{r.text}</p>

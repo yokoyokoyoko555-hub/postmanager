@@ -3,22 +3,27 @@ import { compressImageIfNeeded } from "./imageCompress.js";
 import * as instagram from "../platforms/instagram.js";
 import * as x from "../platforms/x.js";
 import { prisma } from "./prisma.js";
+import { substitutePlaceholders } from "./placeholders.js";
 import { ensureFreshXToken } from "./xAuth.js";
 
-export async function publishDraft(draft: Draft, account: Account): Promise<string> {
+// 戻り値のtextは、{日付}などのプレースホルダーを実際に置き換えた後の、実際に送信した本文
+export async function publishDraft(draft: Draft, account: Account): Promise<{ platformPostId: string; text: string }> {
   if (!account.oauthAccessToken) throw new Error("アカウントが連携されていません");
 
   account = await ensureFreshXToken(account);
   const accessToken = account.oauthAccessToken;
   if (!accessToken) throw new Error("アカウントが連携されていません");
 
+  // {日付}などのプレースホルダーは、実際に投稿する瞬間の日付で置き換える
+  const text = substitutePlaceholders(draft.text);
+
   if (account.platform === "x") {
-    // 無言リポスト: 新規投稿は作らず、過去の投稿をそのまま再共有する
+    // 無言リポスト: 新規投稿は作らず、過去の投稿をそのまま再共有する(本文は送信されない)
     if (draft.postMode === "repost") {
       if (!draft.quoteTargetId) throw new Error("リポスト対象の投稿が指定されていません");
       if (!account.platformUserId) throw new Error("Xアカウントのユーザー情報が取得できていません(再連携が必要な場合があります)");
       await x.repost({ accessToken, userId: account.platformUserId, tweetId: draft.quoteTargetId });
-      return draft.quoteTargetId;
+      return { platformPostId: draft.quoteTargetId, text: draft.text };
     }
 
     const mediaIds: string[] = [];
@@ -34,11 +39,11 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
     }
     const result = await x.postTweet({
       accessToken,
-      text: draft.text,
+      text,
       mediaIds,
       quoteTweetId: draft.postMode === "quote" ? (draft.quoteTargetId ?? undefined) : undefined,
     });
-    return result.id;
+    return { platformPostId: result.id, text };
   }
 
   // instagram
@@ -49,13 +54,14 @@ export async function publishDraft(draft: Draft, account: Account): Promise<stri
     igUserId: account.igBusinessAccountId,
     accessToken,
     imageUrl,
-    caption: draft.text,
+    caption: text,
   });
-  return instagram.publishMedia({
+  const platformPostId = await instagram.publishMedia({
     igUserId: account.igBusinessAccountId,
     accessToken,
     creationId,
   });
+  return { platformPostId, text };
 }
 
 // 「今すぐ投稿」の連打や、ワーカーの自動実行とのタイミング重複による二重投稿を防ぐため、
@@ -86,11 +92,11 @@ export async function postDraftNow(draftId: string) {
   }
 
   try {
-    const platformPostId = await publishDraft(draft, draft.account);
+    const { platformPostId, text } = await publishDraft(draft, draft.account);
     const [updated] = await prisma.$transaction([
       prisma.draft.update({
         where: { id: draft.id },
-        data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false },
+        data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false, text },
       }),
       prisma.postLog.create({
         data: { draftId: draft.id, platformPostId, status: "success" },

@@ -71,11 +71,11 @@ export const api = {
     list: (accountId?: string) => request<RoutinePost[]>(`/routines${accountId ? `?accountId=${accountId}` : ""}`),
     create: (data: {
       accountId: string; templateId?: string | null; text: string; mediaUrls?: string[]; frequency: RoutineFrequency;
-      daysOfWeek: number[]; hour: number; minute: number; active?: boolean; endDate?: string | null;
+      daysOfWeek: number[]; hour: number; minute: number; active?: boolean; aiVariation?: boolean; endDate?: string | null;
     }) => request<RoutinePost>("/routines", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: {
       accountId: string; templateId?: string | null; text: string; mediaUrls?: string[]; frequency: RoutineFrequency;
-      daysOfWeek: number[]; hour: number; minute: number; active?: boolean; endDate?: string | null;
+      daysOfWeek: number[]; hour: number; minute: number; active?: boolean; aiVariation?: boolean; endDate?: string | null;
     }) => request<RoutinePost>(`/routines/${id}`, { method: "PUT", body: JSON.stringify(data) }),
     remove: (id: string) => request<null>(`/routines/${id}`, { method: "DELETE" }),
   },

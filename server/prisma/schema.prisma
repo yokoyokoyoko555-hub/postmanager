@@ -80,6 +80,9 @@ model RoutinePost {
   hour              Int
   minute            Int
   active            Boolean          @default(true)
+  // trueの場合、発火のたびにAIで文面(語尾・言い回し)をリライトしてから投稿する。
+  // 同一文面の繰り返し投稿によるX側の重複投稿ブロックを避けるため
+  aiVariation       Boolean          @default(false)
   // nullなら期限なし。設定した場合、この日(JST)を過ぎたら発火しなくなる
   endDate           DateTime?        @db.Date
   // その日(JST)にもう発火したかどうかの判定用。同じ日に二重生成しないためのガード

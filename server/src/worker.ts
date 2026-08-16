@@ -3,6 +3,7 @@ import cron from "node-cron";
 import { generateDailyReportsForAllAccounts } from "./lib/dailyReport.js";
 import { prisma } from "./lib/prisma.js";
 import { claimDraftForPosting, publishDraft } from "./lib/publish.js";
+import { rephraseText } from "./lib/rephrase.js";
 
 const MAX_RETRIES = 3;
 
@@ -17,11 +18,11 @@ async function runScheduledPosts() {
     if (!draft) continue;
 
     try {
-      const platformPostId = await publishDraft(draft, draft.account);
+      const { platformPostId, text } = await publishDraft(draft, draft.account);
       await prisma.$transaction([
         prisma.draft.update({
           where: { id: draft.id },
-          data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false },
+          data: { status: "posted", postedAt: new Date(), lastError: null, postInProgress: false, text },
         }),
         prisma.postLog.create({
           data: { draftId: draft.id, platformPostId, status: "success" },
@@ -101,8 +102,18 @@ async function runRoutinePosts() {
 
     // テンプレートと連動している場合は、投稿する瞬間の最新のテンプレート内容を使う
     // (連動先が削除済みならルーティーン側に残っているキャッシュにフォールバック)
-    const text = routine.template?.body ?? routine.text;
+    let text = routine.template?.body ?? routine.text;
     const mediaUrls = routine.template?.mediaUrls ?? routine.mediaUrls;
+
+    // 毎回まったく同じ文面だとXの重複投稿ブロックに引っかかるため、
+    // 設定されていればAIで語尾・言い回しを変える(失敗時は元の文面のまま投稿する)
+    if (routine.aiVariation) {
+      try {
+        text = await rephraseText(text);
+      } catch (e) {
+        console.error(`[worker] routine ${routine.id} AI rephrase failed, using original text: ${(e as Error).message}`);
+      }
+    }
 
     const draft = await prisma.draft.create({
       data: {

@@ -88,6 +88,7 @@ export interface RoutinePost {
   hour: number;
   minute: number;
   active: boolean;
+  aiVariation: boolean;
   endDate: string | null;
   lastTriggeredDate: string | null;
   createdAt: string;
