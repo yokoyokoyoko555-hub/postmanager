@@ -152,12 +152,13 @@ function FoilFrame({ children, holo = false }: { children: React.ReactNode; holo
 
 /* --------------------------------------------------------- 下書きカード --------------------------------------------------------- */
 function DraftCard({
-  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow, onRepost, onSaveAsTemplate, posting = false,
+  draft, account, onEdit, onDelete, onSchedule, onTogglePosted, onPostNow, onRepost, onSaveAsTemplate, onCreateRoutine, posting = false,
 }: {
   draft: Draft; account?: Account;
   onEdit: (d: Draft) => void; onDelete: (d: Draft) => void;
   onSchedule: (d: Draft) => void; onTogglePosted: (d: Draft) => void; onPostNow: (d: Draft) => void;
   onRepost: (d: Draft) => void; onSaveAsTemplate: (text: string, mediaUrls: string[]) => void;
+  onCreateRoutine: (d: Draft) => void;
   posting?: boolean;
 }) {
   const canPostNow = draft.status !== "posted" && !!account?.connected && !posting;
@@ -217,6 +218,9 @@ function DraftCard({
             )}
             <button onClick={() => onSaveAsTemplate(draft.text, draft.mediaUrls)} title="本文をテンプレートとして保存" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: MUTED }}>
               <BookmarkPlus size={15} />
+            </button>
+            <button onClick={() => onCreateRoutine(draft)} title="この内容でルーティーンを作成" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: HOLO_A }}>
+              <CalendarClock size={15} />
             </button>
             <button onClick={() => onTogglePosted(draft)} title="投稿済みにする(記録用)" className="p-1.5 rounded hover:opacity-80 transition" style={{ color: draft.status === "posted" ? GREEN : MUTED }}>
               <Check size={15} />
@@ -694,7 +698,7 @@ function TemplateEditorModal({
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 function RoutineEditorModal({
-  open, onClose, onSave, routine, accounts, defaultAccountId, seedTemplate,
+  open, onClose, onSave, routine, accounts, defaultAccountId, seedTemplate, seedDraft,
 }: {
   open: boolean; onClose: () => void;
   onSave: (v: {
@@ -703,6 +707,7 @@ function RoutineEditorModal({
   }) => void;
   routine: RoutinePost | null; accounts: Account[]; defaultAccountId: string;
   seedTemplate?: Template | null;
+  seedDraft?: Draft | null;
 }) {
   const [accountId, setAccountId] = useState(routine?.accountId || defaultAccountId);
   const [templateId, setTemplateId] = useState<string | null>(routine?.templateId ?? null);
@@ -732,6 +737,12 @@ function RoutineEditorModal({
       setTemplateId(seedTemplate.id);
       setText(seedTemplate.body);
       setMediaUrls(seedTemplate.mediaUrls);
+    } else if (seedDraft) {
+      // 下書きの「ルーティーン化する」から開いた場合、その内容をそのままコピーして開始する(テンプレート連動はしない)
+      setAccountId(seedDraft.accountId);
+      setTemplateId(null);
+      setText(seedDraft.text);
+      setMediaUrls(seedDraft.mediaUrls);
     } else {
       setAccountId(defaultAccountId);
       setTemplateId(null);
@@ -748,7 +759,7 @@ function RoutineEditorModal({
     setEndYear(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : d.year);
     setEndMonth(routine?.endDate ? Number(routine.endDate.slice(5, 7)) : d.month);
     setEndDay(routine?.endDate ? Number(routine.endDate.slice(8, 10)) : d.day);
-  }, [routine, seedTemplate, open, defaultAccountId]);
+  }, [routine, seedTemplate, seedDraft, open, defaultAccountId]);
 
   if (!open) return null;
 
@@ -1124,6 +1135,7 @@ export default function App() {
   const [routineEditorOpen, setRoutineEditorOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<RoutinePost | null>(null);
   const [routineSeedTemplate, setRoutineSeedTemplate] = useState<Template | null>(null);
+  const [routineSeedDraft, setRoutineSeedDraft] = useState<Draft | null>(null);
 
   const reloadAll = async () => {
     try {
@@ -1302,11 +1314,20 @@ export default function App() {
     setRoutineEditorOpen(false);
     setEditingRoutine(null);
     setRoutineSeedTemplate(null);
+    setRoutineSeedDraft(null);
   };
 
   const createRoutineFromTemplate = (t: Template) => {
     setEditingRoutine(null);
     setRoutineSeedTemplate(t);
+    setRoutineSeedDraft(null);
+    setRoutineEditorOpen(true);
+  };
+
+  const createRoutineFromDraft = (d: Draft) => {
+    setEditingRoutine(null);
+    setRoutineSeedTemplate(null);
+    setRoutineSeedDraft(d);
     setRoutineEditorOpen(true);
   };
 
@@ -1879,6 +1900,7 @@ export default function App() {
                   onPostNow={postNow}
                   onRepost={repostDraft}
                   onSaveAsTemplate={saveTextAsTemplate}
+                  onCreateRoutine={createRoutineFromDraft}
                   posting={postingIds.has(d.id)}
                 />
               ))}
@@ -1917,7 +1939,8 @@ export default function App() {
         accounts={accounts}
         defaultAccountId={activeAccountId === "all" ? (accounts[0]?.id ?? "") : activeAccountId}
         seedTemplate={routineSeedTemplate}
-        onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); setRoutineSeedTemplate(null); }}
+        seedDraft={routineSeedDraft}
+        onClose={() => { setRoutineEditorOpen(false); setEditingRoutine(null); setRoutineSeedTemplate(null); setRoutineSeedDraft(null); }}
         onSave={saveRoutine}
       />
     </div>
