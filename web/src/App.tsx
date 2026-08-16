@@ -954,7 +954,7 @@ function AccountEditorModal({ open, onClose, onSave }: { open: boolean; onClose:
 /* --------------------------------------------------------- AI生成モーダル --------------------------------------------------------- */
 function AIGenerateModal({
   open, onClose, accounts, defaultAccountId, onAdopt,
-}: { open: boolean; onClose: () => void; accounts: Account[]; defaultAccountId: string; onAdopt: (v: { accountId: string; text: string }) => void }) {
+}: { open: boolean; onClose: () => void; accounts: Account[]; defaultAccountId: string; onAdopt: (v: { accountId: string; texts: string[] }) => void }) {
   const [accountId, setAccountId] = useState(defaultAccountId);
   const [input, setInput] = useState("");
   const [tone, setTone] = useState<(typeof TONE_OPTIONS)[number]["id"]>("hype");
@@ -962,10 +962,19 @@ function AIGenerateModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [variants, setVariants] = useState<{ label: string; text: string }[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (open) { setAccountId(defaultAccountId); setInput(""); setVariants([]); setError(""); }
+    if (open) { setAccountId(defaultAccountId); setInput(""); setVariants([]); setError(""); setSelected(new Set()); }
   }, [open, defaultAccountId]);
+
+  const toggleSelected = (i: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
 
   if (!open) return null;
 
@@ -974,6 +983,7 @@ function AIGenerateModal({
     setLoading(true);
     setError("");
     setVariants([]);
+    setSelected(new Set());
     try {
       const { variants } = await api.ai.generateDraft({ accountId, input, tone, provider });
       setVariants(variants);
@@ -1043,15 +1053,30 @@ function AIGenerateModal({
           {error && <p className="text-sm" style={{ color: RED }}>{error}</p>}
           {variants.length > 0 && (
             <div className="flex flex-col gap-3 pt-2" style={{ borderTop: `1px solid ${HAIRLINE}` }}>
-              {variants.map((v, i) => (
-                <div key={i} className="rounded-lg p-3" style={{ background: CARD, border: `1px solid ${HAIRLINE}` }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span style={{ fontFamily: monoFont, fontSize: 11, color: HOLO_A }}>{v.label || `パターン${i + 1}`}</span>
-                    <button onClick={() => onAdopt({ accountId, text: v.text })} className="text-xs px-3 py-1 rounded" style={{ background: GOLD, color: INK }}>下書きに採用</button>
+              {variants.map((v, i) => {
+                const isSelected = selected.has(i);
+                return (
+                  <div key={i} className="rounded-lg p-3 flex gap-2.5" style={{ background: CARD, border: `1px solid ${isSelected ? HOLO_A : HAIRLINE}` }}>
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelected(i)} className="mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <span style={{ fontFamily: monoFont, fontSize: 11, color: HOLO_A }}>{v.label || `パターン${i + 1}`}</span>
+                        <button onClick={() => onAdopt({ accountId, texts: [v.text] })} className="text-xs px-3 py-1 rounded shrink-0" style={{ background: GOLD, color: INK }}>下書きに採用</button>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap" style={{ color: PAPER, fontFamily: bodyFont }}>{v.text}</p>
+                    </div>
                   </div>
-                  <p className="text-sm whitespace-pre-wrap" style={{ color: PAPER, fontFamily: bodyFont }}>{v.text}</p>
-                </div>
-              ))}
+                );
+              })}
+              {selected.size > 0 && (
+                <button
+                  onClick={() => onAdopt({ accountId, texts: variants.filter((_, i) => selected.has(i)).map((v) => v.text) })}
+                  className="flex items-center justify-center gap-2 py-2.5 rounded text-sm font-medium"
+                  style={{ background: `linear-gradient(135deg, ${HOLO_A}, ${HOLO_B})`, color: INK }}
+                >
+                  <FileText size={15} /> 選択した{selected.size}件を下書きに採用
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1377,9 +1402,9 @@ export default function App() {
     }
   };
 
-  const adoptAIVariant = async ({ accountId, text }: { accountId: string; text: string }) => {
-    const created = await api.drafts.create({ accountId, text, source: "ai" });
-    setDrafts((prev) => [created, ...prev]);
+  const adoptAIVariant = async ({ accountId, texts }: { accountId: string; texts: string[] }) => {
+    const created = await Promise.all(texts.map((text) => api.drafts.create({ accountId, text, source: "ai" })));
+    setDrafts((prev) => [...created, ...prev]);
     setAiOpen(false);
   };
 
