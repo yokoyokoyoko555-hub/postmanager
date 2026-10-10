@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sparkles, Calendar, FileText, Plus, Trash2, Pencil, Clock,
   LayoutGrid, X, Check, Loader2, Users, Layers,
@@ -120,6 +120,73 @@ function PlaceholderReference() {
         </span>
       ))}
       <span className="text-[11px]" style={{ color: MUTED }}>商品名・URLなどは商品ごとに変わるため自動化されていません。手入力してください。</span>
+    </div>
+  );
+}
+
+// 本文入力欄にワンタッチで挿入できる絵文字(トレカショップの投稿でよく使うものを中心に)
+const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+  { label: "告知・強調", emojis: ["📢", "📣", "🔥", "✨", "🎉", "💫", "🌟", "⭐️", "🆕", "🔰", "❗️", "❓", "⚠️", "💡", "🔔", "🈹"] },
+  { label: "カード・ショップ", emojis: ["🃏", "🎴", "🏆", "🥇", "👑", "💎", "🛒", "📦", "🚚", "🛍️", "🎁", "💰", "📅", "⏰", "🏪", "🔍"] },
+  { label: "矢印・記号", emojis: ["👉", "👇", "👆", "👈", "✅", "☑️", "▶️", "🔁", "➡️", "⬇️", "💬", "📍", "🔗", "📷", "🎥", "🔖"] },
+  { label: "表情・反応", emojis: ["😊", "😆", "😍", "🤔", "😲", "🙌", "👏", "🙏", "💪", "👀", "❤️", "🤝", "🥳", "😎", "😭", "🫡"] },
+];
+
+// 入力欄のカーソル位置(選択範囲があれば置き換え)に絵文字を挿入するパレット
+function EmojiPicker({
+  textareaRef, value, onChange,
+}: { textareaRef: React.RefObject<HTMLTextAreaElement | null>; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  const insert = (emoji: string) => {
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    onChange(value.slice(0, start) + emoji + value.slice(end));
+    // 挿入後、カーソルを絵文字の直後に戻して続けて入力できるようにする
+    const caret = start + emoji.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-[11px] px-2 py-1 rounded"
+        style={{ color: open ? GOLD : MUTED, border: `1px solid ${open ? GOLD_SOFT : HAIRLINE}`, background: CARD }}
+      >
+        😀 絵文字を挿入
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded p-2 flex flex-col gap-2" style={{ background: CARD, border: `1px solid ${HAIRLINE}` }}>
+          {EMOJI_GROUPS.map((g) => (
+            <div key={g.label}>
+              <div className="text-[10px] mb-1" style={{ color: MUTED, fontFamily: monoFont }}>{g.label}</div>
+              <div className="flex flex-wrap gap-0.5">
+                {g.emojis.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    // ボタンを押してもテキスト入力欄のフォーカス・カーソル位置が外れないようにする
+                    onMouseDown={(ev) => ev.preventDefault()}
+                    onClick={() => insert(e)}
+                    className="w-8 h-8 rounded text-lg hover:opacity-70"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="text-[10px]" style={{ color: MUTED }}>
+            パレットにない絵文字は、キーボード(Windows: Win+. / スマホ: 絵文字キーボード)から直接入力できます。
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -352,6 +419,7 @@ function DraftEditorModal({
   const [uploading, setUploading] = useState(false);
   const [postMode, setPostMode] = useState<PostMode>(draft?.postMode || "post");
   const [quoteTargetId, setQuoteTargetId] = useState(draft?.quoteTargetId || "");
+  const textRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setAccountId(draft?.accountId || defaultAccountId || accounts[0]?.id || "");
@@ -477,7 +545,7 @@ function DraftEditorModal({
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>
               {postMode === "repost" ? "本文(リポストのため送信されません)" : postMode === "quote" ? "引用コメント" : "本文"}
             </label>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={postMode === "repost" ? 2 : 6} disabled={postMode === "repost"} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed disabled:opacity-60" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder={postMode === "quote" ? "引用に添えるコメントを入力…" : "投稿文を入力…"} />
+            <textarea ref={textRef} value={text} onChange={(e) => setText(e.target.value)} rows={postMode === "repost" ? 2 : 6} disabled={postMode === "repost"} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed disabled:opacity-60" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder={postMode === "quote" ? "引用に添えるコメントを入力…" : "投稿文を入力…"} />
             <div className="flex items-center justify-between mt-1">
               {postMode !== "repost" ? (
                 <button onClick={() => onSaveAsTemplate(text, mediaUrls)} disabled={!text.trim()} className="flex items-center gap-1 text-[11px] disabled:opacity-40" style={{ color: HOLO_A, fontFamily: monoFont }}>
@@ -486,6 +554,7 @@ function DraftEditorModal({
               ) : <span />}
               <span className="text-[11px]" style={{ color: text.length > 280 ? RED : MUTED, fontFamily: monoFont }}>{text.length} / 280</span>
             </div>
+            {postMode !== "repost" && <EmojiPicker textareaRef={textRef} value={text} onChange={setText} />}
           </div>
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>画像・動画(任意、Instagramは1枚必須)</label>
@@ -621,6 +690,7 @@ function TemplateEditorModal({
   const [accountId, setAccountId] = useState<string | null>(template ? template.accountId : defaultAccountId);
   const [mediaUrls, setMediaUrls] = useState<string[]>(template?.mediaUrls || []);
   const [uploading, setUploading] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setTitle(template?.title || "");
     setBody(template?.body || "");
@@ -676,7 +746,8 @@ function TemplateEditorModal({
           </div>
           <div>
             <label className="text-xs" style={{ color: MUTED, fontFamily: monoFont }}>本文</label>
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} />
+            <textarea ref={bodyRef} value={body} onChange={(e) => setBody(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} />
+            <EmojiPicker textareaRef={bodyRef} value={body} onChange={setBody} />
             <PlaceholderReference />
           </div>
           <div>
@@ -738,6 +809,7 @@ function RoutineEditorModal({
   const [minute, setMinute] = useState(routine?.minute ?? 0);
   const [active, setActive] = useState(routine?.active ?? true);
   const [aiVariation, setAiVariation] = useState(routine?.aiVariation ?? false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const defaults = nowJstParts();
   const [hasEndDate, setHasEndDate] = useState(!!routine?.endDate);
   const [endYear, setEndYear] = useState(routine?.endDate ? Number(routine.endDate.slice(0, 4)) : defaults.year);
@@ -896,7 +968,8 @@ function RoutineEditorModal({
               </div>
             ) : (
               <>
-                <textarea value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+                <textarea ref={textRef} value={text} onChange={(e) => setText(e.target.value)} rows={6} className="w-full mt-1 rounded px-3 py-2 text-sm leading-relaxed" style={{ background: CARD, color: PAPER, border: `1px solid ${HAIRLINE}`, fontFamily: bodyFont }} placeholder="繰り返し投稿する内容を入力…" />
+                <EmojiPicker textareaRef={textRef} value={text} onChange={setText} />
                 <PlaceholderReference />
               </>
             )}
